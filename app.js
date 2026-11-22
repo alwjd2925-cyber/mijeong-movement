@@ -51,6 +51,7 @@
     adminSession: '',   // 대리 예약 폼에서 마지막으로 고른 수업
     onlineProgram: 'morning', // 온라인 클래스 탭
     onlineWeek: null,   // null = 이번 주, 그 외 'YYYY-MM-DD'(월요일) 주 시작일
+    onlinePicked: false, // 수강생이 탭/노트 카드로 프로그램을 직접 골랐는지
     access: null,       // 로그인한 수강생이 볼 수 있는 범위
   };
 
@@ -506,6 +507,7 @@
       if (logoutBtn) {
         UI.studentId = null;
         UI.onlineWeek = null;
+        UI.onlinePicked = false;
         saveCurrent();
         await renderBooking();
         toast('로그아웃했어요.');
@@ -526,6 +528,7 @@
         if (!btn) return;
         UI.studentId = btn.dataset.demo;
         UI.onlineWeek = null;
+        UI.onlinePicked = false;
         saveCurrent();
         await renderBooking();
       });
@@ -540,6 +543,7 @@
           const student = await api.login({ name: data.get('name'), code: data.get('code') });
           UI.studentId = student.id;
           UI.onlineWeek = null;
+          UI.onlinePicked = false;
           saveCurrent();
           form.reset();
           await renderBooking();
@@ -608,6 +612,23 @@
   function allowedPrograms() {
     const allowed = UI.access ? UI.access.online : [];
     return allowed.map((id) => ONLINE[id]).filter(Boolean);
+  }
+
+  /* 처음 열 때는 가장 최근에 기록한 프로그램을 보여 줍니다 */
+  function programWithRecentRecord(programs, records) {
+    let best = programs[0];
+    let bestAt = '';
+    programs.forEach((p) => {
+      const bucket = (records && records[p.id]) || {};
+      Object.keys(bucket).forEach((key) => {
+        const at = bucket[key] && bucket[key].updatedAt;
+        if (at && at > bestAt) {
+          bestAt = at;
+          best = p;
+        }
+      });
+    });
+    return best;
   }
 
   function onlineCounts(program, record) {
@@ -701,6 +722,13 @@
     }
 
     const records = await api.getOnline(UI.studentId);
+
+    /* 아직 프로그램을 직접 고르지 않았다면 가장 최근 기록이 있는 프로그램부터 */
+    if (!UI.onlinePicked) {
+      program = programWithRecentRecord(programs, records);
+      UI.onlineProgram = program.id;
+    }
+
     const key = currentWeekKey();
     const record = ((records[program.id] || {})[key]) || null;
     const { checked, count, total } = onlineCounts(program, record);
@@ -832,6 +860,7 @@
       const tab = event.target.closest('[data-program]');
       if (tab) {
         UI.onlineProgram = tab.dataset.program;
+        UI.onlinePicked = true;
         await renderOnline();
         return;
       }
@@ -841,6 +870,7 @@
       if (card) {
         UI.onlineProgram = card.dataset.openProgram || UI.onlineProgram;
         UI.onlineWeek = card.dataset.openWeek || null;
+        UI.onlinePicked = true;
         await renderOnline();
         const noteBox = $('.track-note');
         if (noteBox) noteBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1462,6 +1492,7 @@
   /* ── 시작 ──────────────────────────────────────────────── */
   async function init() {
     UI.studentId = loadCurrent();
+    UI.onlinePicked = false;
     renderClasses();
     renderSequence();
     renderDemoSwitch();
