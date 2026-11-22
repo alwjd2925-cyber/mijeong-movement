@@ -254,6 +254,53 @@ const SEQUENCES = {
 
   /* class 카드용 메타 */
 
+/* ════════════════════
+   온라인 클래스 (영상 기반 자가 수련 + 주간 체크)
+   ════════════════════
+   각 프로그램은 movements 목록을 가지고, 수강생은 주차별로
+   동작 × 요일 체크와 노트를 남깁니다. (localStorage → 운영 시 서버)
+   - morning: 아침 모빌리티 8개 동작 (영상은 아직 미연결)
+   - online-coaching: P3 시퀀스에서 고른 핵심 연습 8개 (영상 모달 공유) */
+
+const SEQ_INDEX = new Map();
+[...WARMUP, ...SEQUENCES.beginner, ...SEQUENCES.intermediate].forEach((item) => {
+  if (!SEQ_INDEX.has(item.id)) SEQ_INDEX.set(item.id, item);
+});
+
+const COACHING_MOVEMENTS = ['b2', 'b1', 'b3', 'b4', 'b5', 'b6', 'b7', 'i5']
+  .map((id) => SEQ_INDEX.get(id))
+  .filter(Boolean);
+
+const ONLINE = {
+  morning: {
+    id: 'morning',
+    name: '모닝 모빌리티',
+    en: 'Morning Mobility',
+    sub: '주 4회, 하루 15분씩 스스로의 움직임을 체크해 보세요',
+    noteLabel: 'Mobility Note',
+    noteHint: '각자의 느낌들을 자유롭게 적어 보세요',
+    movements: [
+      { id: 'mm1', name: '어깨 내회전 · 외회전', dose: '', cue: '', video: { youtubeId: '', url: '' } },
+      { id: 'mm2', name: '몸통 회전', dose: '', cue: '', video: { youtubeId: '', url: '' } },
+      { id: 'mm3', name: '날개뼈 CARs', dose: '', cue: '', video: { youtubeId: '', url: '' } },
+      { id: 'mm4', name: '어깨 CARs', dose: '', cue: '', video: { youtubeId: '', url: '' } },
+      { id: 'mm5', name: '골반 시상면 움직임', dose: '', cue: '', video: { youtubeId: '', url: '' } },
+      { id: 'mm6', name: '골반 관상면 움직임', dose: '', cue: '', video: { youtubeId: '', url: '' } },
+      { id: 'mm7', name: '골반 횡단면 움직임', dose: '', cue: '', video: { youtubeId: '', url: '' } },
+      { id: 'mm8', name: '고관절 내회전 · 외회전', dose: '', cue: '', video: { youtubeId: '', url: '' } },
+    ],
+  },
+  'online-coaching': {
+    id: 'online-coaching',
+    name: '핸드스탠드 온라인 코칭',
+    en: 'Handstand Online Coaching',
+    sub: '영상을 보고 따라 한 뒤, 그날의 감각을 체크해 두세요',
+    noteLabel: 'Coaching Note',
+    noteHint: '각자의 느낌들을 자유롭게 적어 보세요',
+    movements: COACHING_MOVEMENTS,
+  },
+};
+
 /* ════════════════════════════════════════════════════════════
    API (localStorage 어댑터)
    ════════════════════════════════════════════════════════════ */
@@ -273,6 +320,25 @@ const api = (() => {
     return d;
   };
   const uid = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
+
+  /* 주(월요일 시작) 계산 — 온라인 체크 기록을 주차별로 나눕니다 */
+  const weekStartOf = (ts) => {
+    const d = new Date(ts);
+    const back = (d.getDay() + 6) % 7; // 월=0 … 일=6
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() - back, 0, 0, 0, 0);
+  };
+  const weekKeyOf = (ts) => dayKey(weekStartOf(ts));
+
+  /* 수강생 × 프로그램 × 주차 기록 한 칸 */
+  function ensureOnlineRecord(state, studentId, programId, weekKeyValue) {
+    if (!state.online) state.online = {};
+    if (!state.online[studentId]) state.online[studentId] = {};
+    if (!state.online[studentId][programId]) state.online[studentId][programId] = {};
+    const bucket = state.online[studentId][programId];
+    if (!bucket[weekKeyValue]) bucket[weekKeyValue] = { checks: {}, note: '', updatedAt: null };
+    if (!bucket[weekKeyValue].checks) bucket[weekKeyValue].checks = {};
+    return bucket[weekKeyValue];
+  }
 
   /* 예약 가능한 수업 목록 (지금부터 N일) */
   function buildSessions(from = new Date(), days = CONFIG.bookingWindowDays) {
@@ -348,7 +414,78 @@ const api = (() => {
     seed('st_pass4', hs[0]);
     seed('st_pass8', hs[1] || hs[0]);
     seed('st_pass8', first('functional'));
+
+    /* 온라인 클래스 샘플 기록 (이번 주) */
+    const wk = weekKeyOf(now.getTime());
+    state.online = {
+      st_pass4: {
+        morning: {
+          [wk]: {
+            checks: {
+              mm1: [1, 0, 1, 0, 1, 0, 0],
+              mm3: [1, 0, 1, 0, 1, 0, 0],
+              mm4: [0, 0, 1, 0, 1, 0, 0],
+              mm5: [0, 0, 1, 0, 0, 0, 1],
+              mm8: [0, 0, 0, 0, 1, 0, 1],
+            },
+            note: '어깨가 많이 뻬뻬했는데 3일째 하니 조금 열리는 느낌이에요. 날개뼈 CARs 할 때 왼쪽이 더 걸립니다.',
+            updatedAt: iso(addDays(now, -1)),
+          },
+        },
+      },
+      st_pass8: {
+        'online-coaching': {
+          [wk]: {
+            checks: {
+              b2: [1, 1, 0, 1, 0, 0, 0],
+              b3: [1, 1, 0, 1, 0, 0, 0],
+              b7: [0, 1, 0, 0, 0, 0, 0],
+            },
+            note: '벽 아래 홀드 20초가 아직 힘들어요. 손목 들기를 먼저 하고 나면 조금 편합니다.',
+            updatedAt: iso(addDays(now, -2)),
+          },
+        },
+      },
+    };
     return state;
+  }
+
+  /* 강사 화면용: 이번 주 온라인 체크·노트 요약 */
+  function onlineSummary(state, weekKeyValue) {
+    const records = state.online || {};
+    return Object.keys(records)
+      .map((studentId) => {
+        const student = (state.students || []).find((x) => x.id === studentId);
+        if (!student) return null;
+        const items = Object.keys(ONLINE)
+          .map((programId) => {
+            const program = ONLINE[programId];
+            const rec = ((records[studentId] || {})[programId] || {})[weekKeyValue];
+            if (!rec) return null;
+            let checked = 0;
+            let count = 0;
+            program.movements.forEach((m) => {
+              const row = (rec.checks || {})[m.id] || [];
+              const hits = row.filter((v) => v === 1).length;
+              count += hits;
+              if (hits > 0) checked += 1;
+            });
+            return {
+              programId,
+              programName: program.name,
+              checked,
+              total: program.movements.length,
+              count,
+              note: rec.note || '',
+              updatedAt: rec.updatedAt || null,
+            };
+          })
+          .filter(Boolean);
+        if (!items.length) return null;
+        return { studentId, name: student.name, items };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   }
 
   let state = null;
@@ -371,6 +508,11 @@ const api = (() => {
     }
     if (!state || state.version !== 1) {
       state = fresh();
+      save();
+    }
+    /* 온라인 체크 기능 이전에 저장된 데이터 보정 */
+    if (!state.online) {
+      state.online = {};
       save();
     }
     prune();
@@ -610,6 +752,50 @@ const api = (() => {
       return this.grantPass(req.studentId, type);
     },
 
+    /* ── 온라인 클래스: 주간 체크 & 노트 ── */
+    async getOnline(studentId) {
+      const s = load();
+      const all = (s.online && s.online[studentId]) || {};
+      return JSON.parse(JSON.stringify(all));
+    },
+
+    /* 주 시작일 키 (기본: 이번 주) */
+    weekKey(ts) {
+      return weekKeyOf(ts == null ? Date.now() : ts);
+    },
+
+    async setOnlineCheck(studentId, programId, weekKeyValue, movementId, dayIndex, on) {
+      if (!studentId) throw new Error('로그인한 수강생만 체크할 수 있어요.');
+      const program = ONLINE[programId];
+      if (!program) throw new Error('온라인 클래스를 찾을 수 없어요.');
+      if (!weekKeyValue) throw new Error('주차를 다시 선택해 주세요.');
+      const day = Number(dayIndex);
+      if (!(day >= 0 && day <= 6)) throw new Error('요일을 다시 확인해 주세요.');
+      if (!program.movements.some((m) => m.id === movementId)) {
+        throw new Error('동작을 찾을 수 없어요.');
+      }
+
+      const s = load();
+      const rec = ensureOnlineRecord(s, studentId, programId, weekKeyValue);
+      if (!rec.checks[movementId]) rec.checks[movementId] = [0, 0, 0, 0, 0, 0, 0];
+      rec.checks[movementId][day] = on ? 1 : 0;
+      rec.updatedAt = new Date().toISOString();
+      save();
+      return JSON.parse(JSON.stringify(rec));
+    },
+
+    async setOnlineNote(studentId, programId, weekKeyValue, text) {
+      if (!studentId) throw new Error('로그인한 수강생만 노트를 저장할 수 있어요.');
+      if (!ONLINE[programId]) throw new Error('온라인 클래스를 찾을 수 없어요.');
+      if (!weekKeyValue) throw new Error('주차를 다시 선택해 주세요.');
+      const s = load();
+      const rec = ensureOnlineRecord(s, studentId, programId, weekKeyValue);
+      rec.note = String(text == null ? '' : text).slice(0, 2000);
+      rec.updatedAt = new Date().toISOString();
+      save();
+      return JSON.parse(JSON.stringify(rec));
+    },
+
     /* ── 강사 화면 데이터 ── */
     async adminData() {
       const s = load();
@@ -655,6 +841,8 @@ const api = (() => {
       return {
         now,
         students,
+        online: onlineSummary(s, weekKeyOf(now)),
+        onlineWeekKey: weekKeyOf(now),
         pending: s.requests
           .filter((r) => r.status === 'pending')
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
