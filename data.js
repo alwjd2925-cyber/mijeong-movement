@@ -31,14 +31,17 @@ const CONFIG = {
   },
 };
 
-/* ── 수업 ─────────────────────────────────────────────────── */
-/* slots: dow 0=일 … 6=토, start/end = 'HH:MM' */
+/* ── 수업 ──────────────────────────────────────────────── */
+/* mode: 'offline' = 스튜디오 수업 / 'online' = 온라인 클래스
+   slots: dow 0=일 … 6=토, start/end = 'HH:MM'
+   온라인 클래스는 정해진 시간표 대신 `when` 문구로 안내합니다. */
 const CLASSES = [
   {
     id: 'handstand',
     name: '핸드스탠드 무브먼트',
     en: 'Handstand Movement',
     icon: 'handstand',
+    mode: 'offline',
     duration: '90분',
     slots: [
       { dow: 3, start: '14:00', end: '15:30' },
@@ -55,11 +58,38 @@ const CLASSES = [
     name: '펑셔널 요가',
     en: 'Functional Yoga',
     icon: 'functional',
+    mode: 'offline',
     duration: '60분',
     slots: [{ dow: 0, start: '10:00', end: '11:00' }],
     blurb:
       '일상에서 쓰는 움직임을 기준으로 몸을 정리하는 60분. 호흡에 맞춰 골반과 어깨의 움직임을 넓히고, 힘을 쓰는 방향을 다시 잡습니다. 일요일 아침을 여는 수업입니다.',
     note: '호흡 · 골반 · 어깨',
+  },
+  {
+    id: 'morning',
+    name: '모닝 모빌리티',
+    en: 'Morning Mobility',
+    icon: 'mobility',
+    mode: 'online',
+    duration: null,
+    slots: [],
+    when: '온라인 클래스 · 일정/신청은 인스타 DM',
+    blurb:
+      '아침에 몸을 깨우는 온라인 모빌리티 클래스입니다. 잠결에 굳은 관절을 부드럽게 풀고 하루의 움직임을 편하게 여는 루틴을 함께 합니다. 집에서 매트 하나로 이어갈 수 있어요.',
+    note: '온라인 · 일정/신청 문의',
+  },
+  {
+    id: 'online-coaching',
+    name: '핸드스탠드 온라인 코칭',
+    en: 'Handstand Online Coaching',
+    icon: 'online',
+    mode: 'online',
+    duration: null,
+    slots: [],
+    when: '온라인 코칭 · 개별/정기 진행',
+    blurb:
+      '온라인으로 피드백과 맞춤 연습을 주고받으며 핸드스탠드를 이어가는 코칭입니다. 오프라인 수업에서 잡은 감각을 집에서 놓지 않도록, 지금 수준에 맞는 연습을 골라 드립니다.',
+    note: '온라인 · 인스타 DM 신청',
   },
 ];
 
