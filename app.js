@@ -53,6 +53,11 @@
     onlineWeek: null,   // null = 이번 주, 그 외 'YYYY-MM-DD'(월요일) 주 시작일
     onlinePicked: false, // 수강생이 탭/노트 카드로 프로그램을 직접 골랐는지
     access: null,       // 로그인한 수강생이 볼 수 있는 범위
+    regOpen: false,     // 등록 신청 폼 열림
+    regType: 'register',
+    regClasses: [],     // 폼에서 고른 수업
+    regPass: '',        // 폼에서 고른 수강권 ('4' | '8')
+    regWarn: false,     // 0개 선택 안내 표시
   };
 
   /* ── 수업별 접근 제어 ──────────────────────────────────── */
@@ -88,6 +93,18 @@
       const meta = classMeta(id);
       return `<span class="class-chip${meta.mode === 'online' ? ' is-online' : ''}">${esc(meta.short)}</span>`;
     }).join('');
+  }
+
+  function classNamesText(ids) {
+    return ((ids || []).map((id) => classMeta(id).name)).join(' · ');
+  }
+
+  /* 신청서에 적힌 수업·수강권 한 줄 */
+  function pendingLineHTML(v) {
+    if (!v || !v.pending) return '';
+    const names = classNamesText(v.pending.classes);
+    const pass = v.pending.passType ? ` · ${v.pending.passType}회권` : '';
+    return `<p class="state-line"><span class="state-line-label">신청 수업</span>${esc(names || '—')}${esc(pass)}</p>`;
   }
 
   /* 로그인 상태에 따라 볼 수 있는 섹션만 남깁니다 */
@@ -246,6 +263,10 @@
             수업별로 열린 페이지만 보입니다. 수강권이 있는 수강생은 날짜를 골라 바로 예약하고,
             온라인 클래스 수강생은 체크와 노트를 남길 수 있어요.
           </p>
+          <div class="state-classes">
+            <p class="state-caption">신규 등록은 수업을 하나 이상 골라 신청 · 두 개 이상도 함께 신청할 수 있어요</p>
+            ${classChipsHTML({ classes: CLASS_ORDER })}
+          </div>
         </div>`;
     }
 
@@ -259,8 +280,10 @@
             ${online.map((id) => esc(classMeta(id).name)).join(' · ')} — 예약 없이 위 online 섹션에서
             주차별 체크와 노트를 남길 수 있어요.
           </p>
+          ${v.pending ? `<p class="state-warn">추가 신청 확인 중 · ${esc(classNamesText(v.pending.classes))}</p>` : ''}
           <button class="btn btn-line btn--sm" type="button" data-goto-online>온라인 클래스로 이동</button>
-        </div>`;
+        </div>
+        ${v.pending ? '' : registerButtonHTML('register', '수업 추가', '수업 추가 신청')}`;
       }
       if (v.status === 'pending') {
         return `
@@ -270,6 +293,7 @@
             강사가 확인하고 수업을 열어 주면 바로 이용할 수 있어요.
             보낸 시각 ${fullDate(new Date(v.pending.createdAt))} ${timeHM(new Date(v.pending.createdAt))}
           </p>
+          ${pendingLineHTML(v)}
         </div>`;
       }
       return `
@@ -280,7 +304,7 @@
           열린 수업에 따라 예약·체크·노트 화면이 보입니다.
         </p>
       </div>
-      <button class="btn btn-butter btn-wide" type="button" data-action="register">등록 <span>신규 등록 신청</span></button>`;
+      ${registerButtonHTML('register')}`;
     }
 
     if (v.status === 'active') {
@@ -309,6 +333,7 @@
             강사가 확인하고 수강권을 개시하면 바로 예약할 수 있어요.
             보낸 시각 ${fullDate(new Date(v.pending.createdAt))} ${timeHM(new Date(v.pending.createdAt))}
           </p>
+          ${pendingLineHTML(v)}
         </div>`;
     }
 
@@ -322,7 +347,7 @@
           <p class="state-title">수강권을 다시 등록해야 해요</p>
           <p class="state-sub">${esc(reason)} 재등록을 요청하면 강사 확인 후 새 수강권이 열립니다.</p>
         </div>
-        <button class="btn btn-butter btn-wide" type="button" data-action="renewal">재등록 <span>재등록 요청</span></button>`;
+        ${registerButtonHTML('renewal')}`;
     }
 
     return `
@@ -333,7 +358,101 @@
           강사가 확인하고 수강권을 개설해 드립니다.
         </p>
       </div>
-      <button class="btn btn-butter btn-wide" type="button" data-action="register">등록 <span>신규 등록 신청</span></button>`;
+      ${registerButtonHTML('register')}`;
+  }
+
+  /* ── 등록 신청 폼 ─────────────────────────────────────── */
+  function registerButtonHTML(type, label, sub) {
+    if (UI.regOpen && UI.regType === type) return registerFormHTML(type);
+    const main = label || (type === 'renewal' ? '재등록' : '등록');
+    const second = sub || (type === 'renewal' ? '재등록 요청' : '신규 등록 신청');
+    return `
+      <button class="btn btn-butter btn-wide" type="button" data-action="${esc(type)}">
+        ${esc(main)} <span>${esc(second)}</span>
+      </button>`;
+  }
+
+  function registerFormHTML(type) {
+    const picked = UI.regClasses || [];
+    const hasOffline = picked.some((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1);
+
+    return `
+    <form class="reg-form" id="registerForm" novalidate>
+      <p class="reg-form-title">${type === 'renewal' ? '재등록 신청' : '등록 신청'}</p>
+      <p class="reg-form-sub">듣고 싶은 수업을 <b>한 개 이상</b> 골라 주세요. 두 개 이상 함께 신청할 수 있어요.</p>
+
+      <div class="cls-picks cls-picks--student" data-reg-picks role="group" aria-label="신청할 수업">
+        ${CLASSES.map((cls) => `
+          <label class="cls-pick${cls.mode === 'online' ? ' is-online' : ''}">
+            <input type="checkbox" value="${esc(cls.id)}"${picked.indexOf(cls.id) !== -1 ? ' checked' : ''}>
+            <span class="pck-body">
+              <span class="pck-mode">${cls.mode === 'online' ? '온라인' : '오프라인'}</span>
+              <span class="pck-name">${esc(cls.name)}</span>
+            </span>
+          </label>`).join('')}
+      </div>
+
+      <div class="reg-pass${hasOffline ? '' : ' is-muted'}" data-reg-pass>
+        <p class="reg-pass-label">수강권 <span>오프라인 수업을 고르면 필요해요</span></p>
+        <div class="pass-picks" role="radiogroup" aria-label="수강권 선택">
+          ${[4, 8].map((n) => `
+            <label class="pass-pick">
+              <input type="radio" name="regPass" value="${n}"${String(UI.regPass) === String(n) ? ' checked' : ''}${hasOffline ? '' : ' disabled'}>
+              <span>${CONFIG.passTypes[n].label}</span>
+              <em>${CONFIG.passTypes[n].count}회 · ${CONFIG.passTypes[n].validDays}일</em>
+            </label>`).join('')}
+        </div>
+      </div>
+
+      <p class="reg-note" data-reg-note>${!picked.length
+        ? '수업을 고르면 수강권 안내가 함께 바뀝니다.'
+        : hasOffline
+          ? '오프라인 수업은 수강권(4회권 · 8회권)으로 예약합니다.'
+          : '온라인만 신청하면 수강권 없이 이용합니다.'}</p>
+      <p class="reg-warn" data-reg-warn${UI.regWarn && !picked.length ? '' : ' hidden'}>수업을 하나 이상 선택해 주세요.</p>
+      <p class="reg-count" data-reg-count>선택한 수업 ${picked.length}개${picked.length ? ` · ${esc(classNamesText(picked))}` : ''}</p>
+
+      <div class="reg-form-foot">
+        <button class="btn btn-butter btn-wide" type="submit" data-register-submit${picked.length ? '' : ' disabled'}>
+          ${type === 'renewal' ? '재등록 신청' : '등록 신청'}
+        </button>
+        <button class="text-btn" type="button" data-register-cancel>닫기</button>
+      </div>
+    </form>`;
+  }
+
+  /* 폼 안에서 체크를 바꿀 때, 다시 그리지 않고 상태만 맞춥니다 (레이아웃 밀림 없음) */
+  function syncRegisterForm() {
+    const form = $('#registerForm');
+    if (!form) return;
+    const picked = UI.regClasses;
+    const hasOffline = picked.some((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1);
+
+    const submit = form.querySelector('[data-register-submit]');
+    if (submit) submit.disabled = !picked.length;
+
+    const warn = form.querySelector('[data-reg-warn]');
+    if (warn) warn.hidden = !(UI.regWarn && !picked.length);
+
+    const passBox = form.querySelector('[data-reg-pass]');
+    if (passBox) passBox.classList.toggle('is-muted', !hasOffline);
+    form.querySelectorAll('input[name="regPass"]').forEach((input) => {
+      input.disabled = !hasOffline;
+    });
+
+    const note = form.querySelector('[data-reg-note]');
+    if (note) {
+      note.textContent = !picked.length
+        ? '수업을 고르면 수강권 안내가 함께 바뀝니다.'
+        : hasOffline
+          ? '오프라인 수업은 수강권(4회권 · 8회권)으로 예약합니다.'
+          : '온라인만 신청하면 수강권 없이 이용합니다.';
+    }
+
+    const count = form.querySelector('[data-reg-count]');
+    if (count) {
+      count.textContent = `선택한 수업 ${picked.length}개${picked.length ? ` · ${classNamesText(picked)}` : ''}`;
+    }
   }
 
   function sessionRowHTML(session, v) {
@@ -496,10 +615,25 @@
       const actionBtn = event.target.closest('[data-action]');
       if (actionBtn && UI.studentId) {
         const type = actionBtn.dataset.action;
-        await act(
-          () => api.request(UI.studentId, type),
-          type === 'renewal' ? '재등록 요청을 보냈어요.' : '등록 신청을 보냈어요.',
-        );
+        const v = await api.getStudent(UI.studentId);
+        UI.regOpen = true;
+        UI.regType = type === 'renewal' ? 'renewal' : 'register';
+        UI.regWarn = false;
+        UI.regPass = '';
+        UI.regClasses = (v && v.classes ? v.classes.slice() : []);
+        await renderBooking();
+        const form = $('#registerForm');
+        if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+
+      const cancelFormBtn = event.target.closest('[data-register-cancel]');
+      if (cancelFormBtn) {
+        UI.regOpen = false;
+        UI.regWarn = false;
+        UI.regClasses = [];
+        UI.regPass = '';
+        await renderBooking();
         return;
       }
 
@@ -508,6 +642,9 @@
         UI.studentId = null;
         UI.onlineWeek = null;
         UI.onlinePicked = false;
+        UI.regOpen = false;
+        UI.regClasses = [];
+        UI.regPass = '';
         saveCurrent();
         await renderBooking();
         toast('로그아웃했어요.');
@@ -521,6 +658,61 @@
       }
     });
 
+    area.addEventListener('change', (event) => {
+      const form = event.target.closest('#registerForm');
+      if (!form) return;
+
+      const box = event.target.closest('[data-reg-picks] input[type="checkbox"]');
+      if (box) {
+        const holder = form.querySelector('[data-reg-picks]');
+        UI.regClasses = Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value);
+        if (UI.regClasses.length) UI.regWarn = false;
+        syncRegisterForm();
+        return;
+      }
+
+      if (event.target.name === 'regPass') {
+        UI.regPass = event.target.value;
+      }
+    });
+
+    area.addEventListener('submit', async (event) => {
+      const form = event.target.closest('#registerForm');
+      if (!form) return;
+      event.preventDefault();
+      if (!UI.studentId) return;
+
+      const type = UI.regType;
+      const picked = UI.regClasses.slice();
+      const hasOffline = picked.some((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1);
+
+      if (!picked.length) {
+        UI.regWarn = true;
+        syncRegisterForm();
+        toast('수업을 하나 이상 선택해 주세요.', true);
+        return;
+      }
+      if (hasOffline && !UI.regPass) {
+        toast('오프라인 수업은 수강권을 골라 주세요.', true);
+        return;
+      }
+
+      const submitBtn = form.querySelector('[data-register-submit]');
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        await api.request(UI.studentId, type, picked, { passType: hasOffline ? UI.regPass : null });
+        UI.regOpen = false;
+        UI.regWarn = false;
+        UI.regClasses = [];
+        UI.regPass = '';
+        await renderBooking();
+        toast(type === 'renewal' ? '재등록 요청을 보냈어요.' : '등록 신청을 보냈어요.');
+      } catch (err) {
+        if (submitBtn) submitBtn.disabled = false;
+        toast(err.message || '신청하지 못했어요.', true);
+      }
+    });
+
     const demoSwitch = $('#demoSwitch');
     if (demoSwitch) {
       demoSwitch.addEventListener('click', async (event) => {
@@ -529,6 +721,9 @@
         UI.studentId = btn.dataset.demo;
         UI.onlineWeek = null;
         UI.onlinePicked = false;
+        UI.regOpen = false;
+        UI.regClasses = [];
+        UI.regPass = '';
         saveCurrent();
         await renderBooking();
       });
@@ -544,6 +739,9 @@
           UI.studentId = student.id;
           UI.onlineWeek = null;
           UI.onlinePicked = false;
+          UI.regOpen = false;
+          UI.regClasses = [];
+          UI.regPass = '';
           saveCurrent();
           form.reset();
           await renderBooking();
@@ -1191,21 +1389,30 @@
     ADMIN_DATA = data;
 
     const requests = data.pending.length
-      ? data.pending.map((req) => `
+      ? data.pending.map((req) => {
+        const names = classNamesText(req.classes);
+        const keptOnly = (req.currentClasses || []).filter((id) => req.classes.indexOf(id) === -1);
+        const defaultPass = req.offline ? (req.passType || 4) : (req.passType || '');
+        const pref = req.passType ? ` · 희망 ${req.passType}회권` : (req.offline ? '' : ' · 수강권 없이 온라인만');
+        return `
           <div class="req-row">
             <div class="req-main">
-              <b>${esc(req.studentName)}</b> · ${esc(requestTypeLabel(req.type))}
+              <b>${esc(req.studentName)}</b> <span class="req-code">${esc(req.studentCode || '')}</span> · ${esc(requestTypeLabel(req.type))}
               <span class="req-sub">${fullDate(new Date(req.createdAt))} ${timeHM(new Date(req.createdAt))}</span>
+              <span class="req-picked">신청 수업 ${esc(names || '—')}${esc(pref)}</span>
+              ${keptOnly.length ? `<span class="req-kept">이미 열린 수업 ${esc(classNamesText(keptOnly))} 은 그대로 유지</span>` : ''}
             </div>
             <div class="req-act">
               ${classPicksHTML(req.classes, 'data-req-cls', req.id)}
               <select class="select" data-req-type="${esc(req.id)}" aria-label="부여할 수강권">
-                <option value="4">4회권</option>
-                <option value="8">8회권</option>
+                <option value=""${defaultPass === '' ? ' selected' : ''}>수강권 없음</option>
+                <option value="4"${defaultPass === 4 ? ' selected' : ''}>4회권</option>
+                <option value="8"${defaultPass === 8 ? ' selected' : ''}>8회권</option>
               </select>
               <button class="btn-mini btn-mini--butter" type="button" data-approve="${esc(req.id)}">승인 · 개시</button>
             </div>
-          </div>`).join('')
+          </div>`;
+      }).join('')
       : '<p class="admin-empty">확인할 요청이 없어요.</p>';
 
     const studentOptions = data.students
@@ -1372,10 +1579,10 @@
           ? Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value)
           : undefined;
         try {
-          await api.approveRequest(id, type, classes);
+          const v = await api.approveRequest(id, type, classes);
           await renderAdmin();
           await renderBooking();
-          toast('수강권과 수업을 열었어요.');
+          toast(`${v.name}님 · 수업 ${v.classes.length}개 열림${v.pass ? ` · ${v.pass.label}` : ' · 수강권 없음'}`);
         } catch (err) {
           toast(err.message, true);
         }

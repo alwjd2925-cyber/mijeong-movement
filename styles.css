@@ -1255,6 +1255,265 @@ table.track-table tbody th.td-ex {
   margin-bottom: 18px;
 }
 
+/* 배너 안의 신청 수업 안내 */
+.state-classes {
+  margin-top: 12px;
+}
+
+.state-caption {
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--ink-45);
+  margin-bottom: 7px;
+  word-break: keep-all;
+}
+
+.state-line {
+  margin-top: 11px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-70);
+  word-break: keep-all;
+}
+
+.state-line-label {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--ink-45);
+  vertical-align: 1px;
+}
+
+.state-warn {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #8a6a00;
+}
+
+/* ── 등록 신청 폼 ── */
+.reg-form {
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  padding: 18px 16px 16px;
+  margin-bottom: 18px;
+}
+
+.reg-form-title {
+  font-size: 15px;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+}
+
+.reg-form-sub {
+  margin-top: 6px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--ink-70);
+  word-break: keep-all;
+}
+
+.reg-form-sub b {
+  font-weight: 620;
+  color: var(--ink);
+}
+
+.cls-picks--student {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.cls-picks--student .cls-pick {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 50px;
+  padding: 9px 10px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ink-70);
+  white-space: normal;
+}
+
+.cls-picks--student .cls-pick input {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 1px 0 0;
+}
+
+.pck-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pck-mode {
+  align-self: flex-start;
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-45);
+  white-space: nowrap;
+}
+
+.pck-name {
+  word-break: keep-all;
+}
+
+.cls-picks--student .cls-pick:has(input:checked) {
+  border-color: var(--ink);
+  background: var(--butter);
+  color: var(--ink);
+}
+
+.cls-picks--student .cls-pick:has(input:checked) .pck-mode {
+  border-color: rgba(24, 24, 24, 0.42);
+  color: var(--ink);
+}
+
+.reg-pass {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  transition: opacity 0.18s;
+}
+
+.reg-pass.is-muted {
+  opacity: 0.48;
+}
+
+.reg-pass-label {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--ink-70);
+}
+
+.reg-pass-label span {
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--ink-45);
+}
+
+.pass-picks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.pass-pick {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--paper);
+  font-size: 11.5px;
+  color: var(--ink-70);
+  cursor: pointer;
+}
+
+.pass-pick input {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #cdd900;
+}
+
+.pass-pick em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--ink-45);
+  white-space: nowrap;
+}
+
+.pass-pick:has(input:checked) {
+  border-color: var(--ink);
+  background: var(--butter);
+  color: var(--ink);
+}
+
+.pass-pick:has(input:checked) em {
+  color: var(--ink-70);
+}
+
+.pass-pick:has(input:disabled) {
+  cursor: default;
+}
+
+.reg-note {
+  margin-top: 12px;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--ink-45);
+  min-height: 17px;
+  word-break: keep-all;
+}
+
+.reg-warn {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #8a6a00;
+}
+
+.reg-warn[hidden] {
+  display: none;
+}
+
+.reg-count {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--ink-70);
+  word-break: keep-all;
+}
+
+.reg-form-foot {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.reg-form-foot .text-btn {
+  justify-self: center;
+}
+
+/* 강사 요청 줄 — 신청 수업 */
+.req-code {
+  margin-left: 2px;
+  font-size: 10px;
+  color: var(--ink-45);
+}
+
+.req-picked {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--ink-70);
+  word-break: keep-all;
+}
+
+.req-kept {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--ink-45);
+}
+
 /* 시간표 */
 .sched {
   margin-top: 4px;
