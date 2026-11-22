@@ -40,6 +40,9 @@
 - **취소 마감**: `CONFIG.cancelDeadlineMs` (기본 1시간).
 - **예약 가능 기간**: `CONFIG.bookingWindowDays` (기본 14일).
 
+- **배포 캐시**: `index.html`의 `styles.css?v=…` / `data.js?v=…` / `app.js?v=…` 뒤 문자를
+  배포마다 바꾸면 방문자 브라우저가 약 10분 캐시를 기다리지 않고 새 파일을 받습니다.
+
 ## 데모 계정
 
 | 이름 | 코드 | 상태 |
