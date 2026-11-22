@@ -1,0 +1,768 @@
+/* ============================================================
+   미정 클래스 — app
+   data.js의 데이터(CLASSES / WARMUP / SEQUENCES / CONFIG)와
+   api를 화면에 연결합니다. 상태 저장은 모두 api 안에서 처리합니다.
+   ============================================================ */
+
+'use strict';
+
+(function () {
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+  const pad2 = (n) => String(n).padStart(2, '0');
+
+  const esc = (str) =>
+    String(str).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[c]));
+
+  /* ── 시간 표기 ─────────────────────────────────────────── */
+  const timeHM = (date) => `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+  const shortDate = (date) => `${date.getMonth() + 1}.${date.getDate()} (${WEEK[date.getDay()]})`;
+  const midDate = (date) => `${date.getMonth() + 1}월 ${date.getDate()}일 (${WEEK[date.getDay()]})`;
+  const fullDate = (date) => `${date.getFullYear()}.${pad2(date.getMonth() + 1)}.${pad2(date.getDate())}`;
+  const localKey = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+
+  function relativeTag(date) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diff = Math.round((target - today) / 86400000);
+    if (diff === 0) return 'today';
+    if (diff === 1) return 'tomorrow';
+    return '';
+  }
+
+  function minutesBetween(a, b) {
+    return Math.round((new Date(b) - new Date(a)) / 60000);
+  }
+
+  /* ── 상태 ──────────────────────────────────────────────── */
+  const UI = { studentId: null, level: 'beginner', resetArmed: false };
+
+  function saveCurrent() {
+    try {
+      if (UI.studentId) localStorage.setItem('mijeong.current', UI.studentId);
+      else localStorage.removeItem('mijeong.current');
+    } catch (err) {
+      /* 무시 */
+    }
+  }
+
+  function loadCurrent() {
+    try {
+      return localStorage.getItem('mijeong.current');
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /* ── 토스트 ────────────────────────────────────────────── */
+  let toastTimer = null;
+  function toast(message, isError) {
+    const node = $('#toast');
+    if (!node) return;
+    node.textContent = message;
+    node.classList.toggle('is-error', !!isError);
+    node.classList.add('is-on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => node.classList.remove('is-on'), 2800);
+  }
+
+  /* ── class ─────────────────────────────────────────────── */
+  function scheduleLabel(cls) {
+    const groups = new Map();
+    cls.slots.forEach((slot) => {
+      const key = `${slot.start}–${slot.end}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(WEEK[slot.dow]);
+    });
+    return Array.from(groups.entries())
+      .map(([time, days]) => `${days.join('·')} ${time}`)
+      .join(' / ');
+  }
+
+  function renderClasses() {
+    const grid = $('#classGrid');
+    if (!grid) return;
+    grid.innerHTML = CLASSES.map((cls) => `
+      <article class="class-card">
+        <div class="class-art">
+          <svg class="il" aria-hidden="true"><use href="#il-${esc(cls.icon)}"></use></svg>
+          <svg class="il-dots" aria-hidden="true"><use href="#il-dots"></use></svg>
+        </div>
+        <div class="class-head">
+          <div>
+            <h3>${esc(cls.name)}</h3>
+            <span class="class-en">${esc(cls.en)}</span>
+          </div>
+          <span class="class-dur">${esc(cls.duration)}</span>
+        </div>
+        <p class="class-when">${esc(scheduleLabel(cls))}</p>
+        <p class="class-blurb">${esc(cls.blurb)}</p>
+        <p class="class-note">${esc(cls.note)}</p>
+      </article>
+    `).join('');
+  }
+
+  /* ── booking ───────────────────────────────────────────── */
+  function passDots(pass) {
+    let out = '';
+    for (let i = 0; i < pass.total; i += 1) {
+      out += `<span class="dot${i < pass.remaining ? ' is-left' : ''}"></span>`;
+    }
+    return out;
+  }
+
+  function dday(expiresAt) {
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    const days = Math.ceil(ms / 86400000);
+    if (days < 0) return '기간 만료';
+    if (days === 0) return '오늘까지';
+    return `D-${days}`;
+  }
+
+  function statusText(v) {
+    if (!v) return '아직 로그인하지 않았어요';
+    if (v.status === 'active') return `${v.pass.label} 사용 중`;
+    if (v.status === 'pending') return v.pending.type === 'renewal' ? '재등록 요청 확인 중' : '등록 신청 확인 중';
+    if (v.status === 'exhausted') return `${v.pass.label} 사용 완료`;
+    return '수강권 없음 · 신규 수강생';
+  }
+
+  function identityHTML(v) {
+    if (!v) {
+      return `
+        <div class="stu-head">
+          <div>
+            <p class="stu-name">게스트</p>
+            <p class="stu-sub">데모 수강생을 고르거나 이름과 코드로 로그인해 주세요</p>
+          </div>
+        </div>`;
+    }
+    return `
+      <div class="stu-head">
+        <div>
+          <p class="stu-name">${esc(v.name)}<span class="stu-code">${esc(v.code)}</span></p>
+          <p class="stu-sub">${esc(statusText(v))}</p>
+        </div>
+        <button class="link-btn" type="button" data-logout>로그아웃</button>
+      </div>`;
+  }
+
+  function statusBlockHTML(v) {
+    if (!v) {
+      return `
+        <div class="state-banner">
+          <p class="state-title">수강생을 선택하면 예약할 수 있어요</p>
+          <p class="state-sub">
+            수강권이 있는 수강생은 날짜를 골라 바로 예약하고, 수업 시작 1시간 전까지 취소할 수 있습니다.
+            수강권이 없다면 등록을 신청해 주세요.
+          </p>
+        </div>`;
+    }
+
+    if (v.status === 'active') {
+      return `
+        <div class="pass">
+          <div class="pass-top">
+            <span class="pass-label">${esc(v.pass.label)}</span>
+            <span class="pass-remain"><b>${v.pass.remaining}</b> / ${v.pass.total}회 남음</span>
+          </div>
+          <div class="dots" aria-label="잔여 ${v.pass.remaining}회">${passDots(v.pass)}</div>
+          <div class="pass-meta">
+            <span>유효기간 ${fullDate(new Date(v.pass.expiresAt))}까지</span>
+            <span>${esc(dday(v.pass.expiresAt))}</span>
+            <span>사용 ${v.pass.used}회 · 예약 ${v.bookings.length}건</span>
+            ${v.pending ? '<span class="pass-warn">재등록 요청 확인 중</span>' : ''}
+          </div>
+        </div>`;
+    }
+
+    if (v.status === 'pending') {
+      const label = v.pending.type === 'renewal' ? '재등록 요청' : '등록 신청';
+      return `
+        <div class="state-banner is-pending">
+          <p class="state-title">${esc(label)}을 보냈어요</p>
+          <p class="state-sub">
+            강사가 확인하고 수강권을 개시하면 바로 예약할 수 있어요.
+            보낸 시각 ${fullDate(new Date(v.pending.createdAt))} ${timeHM(new Date(v.pending.createdAt))}
+          </p>
+        </div>`;
+    }
+
+    if (v.status === 'exhausted') {
+      const p = v.pass;
+      const reason = p.expired && p.remaining > 0
+        ? `유효기간(${fullDate(new Date(p.expiresAt))})이 지났어요. 남은 ${p.remaining}회는 사용할 수 없습니다.`
+        : `${p.label} ${p.used}/${p.total}회를 모두 사용했어요. (${fullDate(new Date(p.expiresAt))} 만료)`;
+      return `
+        <div class="state-banner">
+          <p class="state-title">수강권을 다시 등록해야 해요</p>
+          <p class="state-sub">${esc(reason)} 재등록을 요청하면 강사 확인 후 새 수강권이 열립니다.</p>
+        </div>
+        <button class="btn btn-butter btn-wide" type="button" data-action="renewal">재등록 <span>재등록 요청</span></button>`;
+    }
+
+    return `
+      <div class="state-banner">
+        <p class="state-title">아직 수강권이 없어요</p>
+        <p class="state-sub">
+          수강권은 4회권과 8회권이 있어요. 아래 버튼으로 등록을 신청하면
+          강사가 확인하고 수강권을 개설해 드립니다.
+        </p>
+      </div>
+      <button class="btn btn-butter btn-wide" type="button" data-action="register">등록 <span>신규 등록 신청</span></button>`;
+  }
+
+  function sessionRowHTML(session, v) {
+    const start = new Date(session.startISO);
+    const end = new Date(session.endISO);
+    const mins = minutesBetween(session.startISO, session.endISO);
+    const booking = v ? v.bookings.find((b) => b.sessionId === session.id) : null;
+    const deadline = new Date(start.getTime() - CONFIG.cancelDeadlineMs);
+    const cancelOpen = Date.now() <= deadline.getTime();
+
+    let sub = `${mins}분`;
+    let action = '';
+
+    if (!v) {
+      action = '<button class="btn-mini" type="button" disabled>로그인 후</button>';
+    } else if (booking) {
+      if (cancelOpen) {
+        sub = `취소는 ${shortDate(deadline)} ${timeHM(deadline)}까지`;
+        action = `
+          <span class="badge">예약 완료</span>
+          <button class="btn-mini" type="button" data-cancel="${esc(booking.id)}">취소</button>`;
+      } else {
+        sub = `취소 마감 · ${shortDate(deadline)} ${timeHM(deadline)}`;
+        action = '<span class="badge">예약 완료</span><span class="cap">취소 마감</span>';
+      }
+    } else if (v.status === 'active') {
+      action = `<button class="btn-mini btn-mini--butter" type="button" data-book="${esc(session.id)}">예약</button>`;
+    } else if (v.status === 'pending') {
+      action = '<button class="btn-mini" type="button" disabled>승인 대기</button>';
+    } else {
+      action = '<button class="btn-mini" type="button" disabled>수강권 필요</button>';
+    }
+
+    return `
+      <div class="srow${booking ? ' is-booked' : ''}">
+        <div class="srow-time">${timeHM(start)}</div>
+        <div>
+          <p class="srow-name">${esc(session.className)}</p>
+          <p class="srow-sub">${esc(sub)}</p>
+        </div>
+        <div class="srow-act">${action}</div>
+      </div>`;
+  }
+
+  function scheduleHTML(v, sessions) {
+    const groups = new Map();
+    sessions.forEach((session) => {
+      const key = localKey(new Date(session.startISO));
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(session);
+    });
+    const keys = Array.from(groups.keys()).sort();
+
+    if (!keys.length) {
+      return '<p class="admin-empty">예약 가능한 수업이 없습니다.</p>';
+    }
+
+    const dayBlocks = keys.map((key) => {
+      const list = groups.get(key);
+      const date = new Date(list[0].startISO);
+      const tag = relativeTag(date);
+      return `
+        <div class="sched-day">
+          <div class="sched-date">
+            ${midDate(date)}
+            ${tag ? `<em>${tag}</em>` : ''}
+          </div>
+          ${list.map((session) => sessionRowHTML(session, v)).join('')}
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="sched">
+        <div class="sched-head">
+          <h4>예약 가능한 수업</h4>
+          <span>${keys.length}일 · ${sessions.length}개 수업</span>
+        </div>
+        ${dayBlocks}
+      </div>`;
+  }
+
+  function markDemo(activeId) {
+    $$('#demoSwitch button').forEach((btn) => {
+      btn.classList.toggle('is-active', btn.dataset.demo === activeId);
+    });
+  }
+
+  async function renderBooking() {
+    const area = $('#studentArea');
+    if (!area) return;
+
+    let student = null;
+    if (UI.studentId) {
+      student = await api.getStudent(UI.studentId);
+      if (!student) {
+        UI.studentId = null;
+        saveCurrent();
+      }
+    }
+    const sessions = await api.listSessions();
+    markDemo(student ? student.id : null);
+
+    area.innerHTML = `
+      ${identityHTML(student)}
+      ${statusBlockHTML(student)}
+      ${scheduleHTML(student, sessions)}`;
+  }
+
+  async function act(fn, successMessage) {
+    try {
+      await fn();
+      await renderBooking();
+      if (successMessage) toast(successMessage);
+    } catch (err) {
+      toast(err.message || '처리하지 못했어요.', true);
+    }
+  }
+
+  function bindBooking() {
+    const area = $('#studentArea');
+    if (!area) return;
+
+    area.addEventListener('click', async (event) => {
+      const bookBtn = event.target.closest('[data-book]');
+      if (bookBtn && UI.studentId) {
+        const sessionId = bookBtn.dataset.book;
+        const session = (await api.listSessions()).find((s) => s.id === sessionId);
+        await act(
+          () => api.book(UI.studentId, sessionId),
+          session
+            ? `예약했어요 · ${shortDate(new Date(session.startISO))} ${timeHM(new Date(session.startISO))}`
+            : '예약했어요.',
+        );
+        return;
+      }
+
+      const cancelBtn = event.target.closest('[data-cancel]');
+      if (cancelBtn && UI.studentId) {
+        await act(() => api.cancel(UI.studentId, cancelBtn.dataset.cancel), '예약을 취소했어요. 횟수가 돌아왔습니다.');
+        return;
+      }
+
+      const actionBtn = event.target.closest('[data-action]');
+      if (actionBtn && UI.studentId) {
+        const type = actionBtn.dataset.action;
+        await act(
+          () => api.request(UI.studentId, type),
+          type === 'renewal' ? '재등록 요청을 보냈어요.' : '등록 신청을 보냈어요.',
+        );
+        return;
+      }
+
+      const logoutBtn = event.target.closest('[data-logout]');
+      if (logoutBtn) {
+        UI.studentId = null;
+        saveCurrent();
+        await renderBooking();
+        toast('로그아웃했어요.');
+      }
+    });
+
+    $$('#demoSwitch button').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        UI.studentId = btn.dataset.demo;
+        saveCurrent();
+        await renderBooking();
+      });
+    });
+
+    const form = $('#loginForm');
+    if (form) {
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = new FormData(form);
+        try {
+          const student = await api.login({ name: data.get('name'), code: data.get('code') });
+          UI.studentId = student.id;
+          saveCurrent();
+          form.reset();
+          await renderBooking();
+          toast(`${student.name}님, 반가워요.`);
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+    }
+  }
+
+  /* ── sequence ──────────────────────────────────────────── */
+  function stepHTML(item, index, group) {
+    return `
+      <li class="step">
+        <div class="step-num">${pad2(index + 1)}</div>
+        <div class="step-body">
+          <h4 class="step-name">
+            ${esc(item.name)}
+            ${item.tags && item.tags.length ? `<span class="step-tag">${esc(item.tags.join(' · '))}</span>` : ''}
+          </h4>
+          <p class="step-cue">${esc(item.cue)}</p>
+          <div class="step-foot">
+            <span class="step-dose">${esc(item.dose)}</span>
+            <button class="btn-video" type="button" data-video="${esc(item.id)}">
+              영상 보기
+              <svg viewBox="0 0 9 10" aria-hidden="true"><path d="M0 0l9 5-9 5z" fill="currentColor"></path></svg>
+            </button>
+          </div>
+        </div>
+      </li>`;
+  }
+
+  function renderSequence() {
+    const warm = $('#warmupList');
+    if (warm) warm.innerHTML = WARMUP.map((item, i) => stepHTML(item, i, 'warm-up')).join('');
+
+    const list = $('#seqList');
+    if (list) {
+      const items = SEQUENCES[UI.level] || [];
+      list.innerHTML = items.map((item, i) => stepHTML(item, i, UI.level)).join('');
+    }
+
+    const count = $('#seqCount');
+    if (count) count.textContent = `${(SEQUENCES[UI.level] || []).length} movements · P3`;
+
+    $$('.seq-tab').forEach((tab) => {
+      const on = tab.dataset.level === UI.level;
+      tab.classList.toggle('is-active', on);
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  /* ── 영상 모달 ─────────────────────────────────────────── */
+  const VIDEO_INDEX = new Map();
+  WARMUP.forEach((item) => VIDEO_INDEX.set(item.id, { item, group: 'warm-up' }));
+  Object.keys(SEQUENCES).forEach((level) => {
+    SEQUENCES[level].forEach((item) => VIDEO_INDEX.set(item.id, { item, group: level }));
+  });
+
+  function youtubeId(video) {
+    if (!video) return '';
+    const raw = String(video.youtubeId || '').trim();
+    if (/^[\w-]{6,20}$/.test(raw)) return raw;
+    const source = String(video.url || raw || '').trim();
+    const match = source.match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{6,20})/);
+    return match ? match[1] : '';
+  }
+
+  function openVideo(id) {
+    const entry = VIDEO_INDEX.get(id);
+    const modal = $('#videoModal');
+    if (!entry || !modal) return;
+
+    const { item, group } = entry;
+    const frame = $('#videoFrame');
+    const link = $('#videoLink');
+    const hint = $('#videoHint');
+    const yt = youtubeId(item.video);
+
+    $('#videoTitle').textContent = item.name;
+    $('#videoLevel').textContent = group;
+
+    if (yt) {
+      frame.innerHTML = `<iframe src="https://www.youtube.com/embed/${encodeURIComponent(yt)}?autoplay=1&rel=0"
+        title="${esc(item.name)} 영상" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen></iframe>`;
+      link.href = `https://www.youtube.com/watch?v=${encodeURIComponent(yt)}`;
+      link.hidden = false;
+      hint.textContent = `동작 · ${item.dose}`;
+    } else {
+      frame.innerHTML = `
+        <div class="video-empty">
+          <strong>영상 준비 중입니다</strong>
+          <p>${esc(item.name)} · ${esc(item.dose)}<br>유튜브 링크를 연결하면 이 자리에서 바로 재생됩니다.</p>
+        </div>`;
+      link.hidden = true;
+      hint.textContent = '링크는 data.js의 video 항목에서 연결합니다.';
+    }
+
+    modal.showModal();
+  }
+
+  function closeVideo() {
+    const modal = $('#videoModal');
+    if (!modal) return;
+    const frame = $('#videoFrame');
+    if (frame) frame.innerHTML = '';
+    modal.close();
+  }
+
+  /* ── 강사 모드 ─────────────────────────────────────────── */
+  function requestTypeLabel(type) {
+    return type === 'renewal' ? '재등록 요청' : '신규 등록 신청';
+  }
+
+  function adminStudentsHTML(students) {
+    const rows = students.map((s) => {
+      const pass = s.pass
+        ? `${s.pass.label} ${s.pass.remaining}/${s.pass.total} · ${fullDate(new Date(s.pass.expiresAt))}까지`
+        : '—';
+      const statusLabel = {
+        active: '사용 중',
+        new: '신규',
+        pending: '요청 확인 중',
+        exhausted: '소진/만료',
+      }[s.status] || s.status;
+      return `
+        <tr>
+          <td>${esc(s.name)}<span class="req-sub">${esc(s.code)}</span></td>
+          <td><span class="pill${s.status === 'active' ? ' is-active' : ''}">${esc(statusLabel)}</span></td>
+          <td>${esc(pass)}</td>
+        </tr>`;
+    }).join('');
+
+    return `
+      <table class="stu-table">
+        <thead><tr><th>수강생</th><th>상태</th><th>수강권</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function adminDaysHTML(days) {
+    if (!days.length) return '<p class="admin-empty">예정된 수업이 없습니다.</p>';
+    return days.map((day) => {
+      const date = new Date(day.startISO);
+      const sessions = day.sessions.map((session) => {
+        const start = new Date(session.startISO);
+        const end = new Date(session.endISO);
+        const names = session.bookings.length
+          ? session.bookings.map((b) => esc(b.name)).join(', ')
+          : '예약 없음';
+        return `
+          <div class="day-session">
+            <strong>${timeHM(start)}–${timeHM(end)} · ${esc(session.className)}</strong>
+            <span>${session.bookings.length}명</span>
+            <p class="day-names">${names}</p>
+          </div>`;
+      }).join('');
+
+      return `
+        <details class="day">
+          <summary>
+            <span>${midDate(date)}</span>
+            <span class="day-count">${day.sessions.length}개 수업 · ${day.booked}건</span>
+          </summary>
+          <div class="day-body">${sessions}</div>
+        </details>`;
+    }).join('');
+  }
+
+  async function renderAdmin() {
+    const body = $('#adminBody');
+    if (!body) return;
+    const data = await api.adminData();
+
+    const requests = data.pending.length
+      ? data.pending.map((req) => `
+          <div class="req-row">
+            <div class="req-main">
+              <b>${esc(req.studentName)}</b> · ${esc(requestTypeLabel(req.type))}
+              <span class="req-sub">${fullDate(new Date(req.createdAt))} ${timeHM(new Date(req.createdAt))}</span>
+            </div>
+            <div class="req-act">
+              <select class="select" data-req-type="${esc(req.id)}" aria-label="부여할 수강권">
+                <option value="4">4회권</option>
+                <option value="8">8회권</option>
+              </select>
+              <button class="btn-mini btn-mini--butter" type="button" data-approve="${esc(req.id)}">승인 · 개시</button>
+            </div>
+          </div>`).join('')
+      : '<p class="admin-empty">확인할 요청이 없어요.</p>';
+
+    const studentOptions = data.students
+      .map((s) => `<option value="${esc(s.id)}">${esc(s.name)} · ${esc(s.code)}</option>`)
+      .join('');
+
+    body.innerHTML = `
+      <section class="admin-block">
+        <div class="admin-h"><h4>요청 / requests</h4><span>${data.pending.length}건</span></div>
+        ${requests}
+      </section>
+
+      <section class="admin-block">
+        <div class="admin-h"><h4>수강생 / students</h4><span>${data.students.length}명</span></div>
+        ${adminStudentsHTML(data.students)}
+      </section>
+
+      <section class="admin-block">
+        <div class="admin-h"><h4>수강권 부여 / grant</h4><span></span></div>
+        <div class="grant-row">
+          <select class="select" id="grantStudent" aria-label="수강생">${studentOptions}</select>
+          <select class="select" id="grantType" aria-label="수강권 종류">
+            <option value="4">4회권 · 60일</option>
+            <option value="8">8회권 · 90일</option>
+          </select>
+          <button class="btn-mini btn-mini--butter" type="button" data-grant>부여</button>
+        </div>
+        <p class="grant-hint">부여하면 잔여 횟수가 새로 시작됩니다. 이미 사용 중인 수강권이 있으면 새 수강권으로 교체되고, 남은 횟수는 넘어가지 않아요.</p>
+      </section>
+
+      <section class="admin-block">
+        <div class="admin-h"><h4>예약 현황 / schedule</h4><span>오늘부터 ${CONFIG.bookingWindowDays}일</span></div>
+        ${adminDaysHTML(data.days)}
+      </section>
+
+      <div class="admin-foot">
+        <p>데모 데이터는 이 브라우저에 저장됩니다.</p>
+        <button class="text-btn" type="button" data-reset>데모 초기화</button>
+      </div>`;
+  }
+
+  function bindAdmin() {
+    const openers = $$('[data-open-admin]');
+    const modal = $('#adminModal');
+    if (!modal) return;
+
+    openers.forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        UI.resetArmed = false;
+        await renderAdmin();
+        modal.showModal();
+      });
+    });
+
+    const body = $('#adminBody');
+    body.addEventListener('click', async (event) => {
+      const approveBtn = event.target.closest('[data-approve]');
+      if (approveBtn) {
+        const id = approveBtn.dataset.approve;
+        const select = body.querySelector(`[data-req-type="${id}"]`);
+        const type = select ? select.value : '4';
+        try {
+          await api.approveRequest(id, type);
+          await renderAdmin();
+          await renderBooking();
+          toast('수강권을 개시했어요.');
+        } catch (err) {
+          toast(err.message, true);
+        }
+        return;
+      }
+
+      const grantBtn = event.target.closest('[data-grant]');
+      if (grantBtn) {
+        const studentId = $('#grantStudent').value;
+        const type = $('#grantType').value;
+        try {
+          await api.grantPass(studentId, type);
+          await renderAdmin();
+          await renderBooking();
+          toast('수강권을 부여했어요.');
+        } catch (err) {
+          toast(err.message, true);
+        }
+        return;
+      }
+
+      const resetBtn = event.target.closest('[data-reset]');
+      if (resetBtn) {
+        if (!UI.resetArmed) {
+          UI.resetArmed = true;
+          resetBtn.textContent = '한 번 더 누르면 초기화됩니다';
+          return;
+        }
+        await api.reset();
+        UI.resetArmed = false;
+        UI.studentId = null;
+        saveCurrent();
+        await renderAdmin();
+        await renderBooking();
+        toast('데모 데이터를 초기화했어요.');
+      }
+    });
+  }
+
+  /* ── 모달 공통 ─────────────────────────────────────────── */
+  function bindModals() {
+    const videoModal = $('#videoModal');
+    const adminModal = $('#adminModal');
+
+    if (videoModal) {
+      videoModal.addEventListener('click', (event) => {
+        if (event.target.closest('[data-close-video]')) closeVideo();
+        if (event.target === videoModal) closeVideo();
+      });
+      videoModal.addEventListener('close', () => {
+        const frame = $('#videoFrame');
+        if (frame) frame.innerHTML = '';
+      });
+    }
+
+    if (adminModal) {
+      adminModal.addEventListener('click', (event) => {
+        if (event.target.closest('[data-close-admin]') || event.target === adminModal) adminModal.close();
+      });
+    }
+
+    document.addEventListener('click', (event) => {
+      const vidBtn = event.target.closest('[data-video]');
+      if (vidBtn) openVideo(vidBtn.dataset.video);
+    });
+
+    $$('.seq-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        UI.level = tab.dataset.level;
+        renderSequence();
+      });
+    });
+  }
+
+  /* ── 현재 섹션 표시 ────────────────────────────────────── */
+  function bindScrollSpy() {
+    const links = $$('.head-nav a');
+    const map = new Map();
+    links.forEach((link) => {
+      const target = document.querySelector(link.getAttribute('href'));
+      if (target) map.set(target, link);
+    });
+    if (!map.size || !('IntersectionObserver' in window)) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        links.forEach((l) => l.classList.remove('is-current'));
+        const active = map.get(entry.target);
+        if (active) active.classList.add('is-current');
+      });
+    }, { rootMargin: '-45% 0px -50% 0px' });
+
+    map.forEach((_, target) => observer.observe(target));
+  }
+
+  /* ── 시작 ──────────────────────────────────────────────── */
+  async function init() {
+    UI.studentId = loadCurrent();
+    renderClasses();
+    renderSequence();
+    bindBooking();
+    bindAdmin();
+    bindModals();
+    bindScrollSpy();
+    await renderBooking();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
