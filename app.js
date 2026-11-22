@@ -1040,12 +1040,17 @@
   function adminStudentsHTML(students) {
     const rows = students.map((s) => {
       const pass = s.pass ? `${s.pass.label} ${s.pass.remaining}/${s.pass.total}` : '수강권 없음';
-      const statusLabel = {
-        active: '사용 중',
-        new: '신규',
-        pending: '요청 확인 중',
-        exhausted: '소진/만료',
-      }[s.status] || s.status;
+      const classes = s.classes || [];
+      const onlineOnly = !classes.some((c) => OFFLINE_CLASS_IDS.indexOf(c) !== -1)
+        && classes.some((c) => ONLINE_CLASS_IDS.indexOf(c) !== -1);
+      const statusLabel = s.status === 'new' && onlineOnly
+        ? '온라인'
+        : ({
+          active: '사용 중',
+          new: '신규',
+          pending: '요청 확인 중',
+          exhausted: '소진/만료',
+        }[s.status] || s.status);
       return `
         <tr>
           <td class="stu-cell">
