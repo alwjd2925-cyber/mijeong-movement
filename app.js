@@ -43,7 +43,13 @@
   }
 
   /* ── 상태 ──────────────────────────────────────────────── */
-  const UI = { studentId: null, level: 'beginner', resetArmed: false };
+  const UI = {
+    studentId: null,
+    level: 'beginner',
+    resetArmed: false,
+    adminStudent: '',   // 대리 예약 폼에서 마지막으로 고른 수강생
+    adminSession: '',   // 대리 예약 폼에서 마지막으로 고른 수업
+  };
 
   function saveCurrent() {
     try {
@@ -537,6 +543,24 @@
       </table>`;
   }
 
+  /* 예약 한 건 — 이름 + 강사는 언제든 누를 수 있는 취소 버튼 */
+  function adminBookingHTML(booking, session) {
+    const start = new Date(session.startISO);
+    const label = `${booking.name} · ${shortDate(start)} ${timeHM(start)}`;
+    const tags = [];
+    if (booking.by === 'instructor') tags.push('<span class="bk-tag">강사 예약</span>');
+    if (session.late) tags.push('<span class="bk-tag is-late">취소 마감</span>');
+    return `
+      <li class="bk-item">
+        <span class="bk-name">${esc(booking.name)}</span>
+        ${tags.join('')}
+        <button class="btn-mini btn-mini--x" type="button"
+          data-admin-cancel="${esc(booking.id)}"
+          data-bk-label="${esc(label)}"
+          aria-label="${esc(booking.name)} 예약 취소">취소</button>
+      </li>`;
+  }
+
   function adminDaysHTML(days) {
     if (!days.length) return '<p class="admin-empty">예정된 수업이 없습니다.</p>';
     return days.map((day) => {
@@ -544,14 +568,16 @@
       const sessions = day.sessions.map((session) => {
         const start = new Date(session.startISO);
         const end = new Date(session.endISO);
-        const names = session.bookings.length
-          ? session.bookings.map((b) => esc(b.name)).join(', ')
-          : '예약 없음';
+        const list = session.bookings.length
+          ? `<ul class="bk-list">${session.bookings.map((b) => adminBookingHTML(b, session)).join('')}</ul>`
+          : '<p class="day-names">예약 없음</p>';
         return `
           <div class="day-session">
-            <strong>${timeHM(start)}–${timeHM(end)} · ${esc(session.className)}</strong>
-            <span>${session.bookings.length}명</span>
-            <p class="day-names">${names}</p>
+            <div class="ds-head">
+              <strong>${timeHM(start)}–${timeHM(end)} · ${esc(session.className)}</strong>
+              <span class="ds-count">${session.bookings.length}명</span>
+            </div>
+            ${list}
           </div>`;
       }).join('');
 
@@ -566,10 +592,56 @@
     }).join('');
   }
 
+  /* 대리 예약 폼 — 수강권이 살아 있는 수강생과 아직 시작하지 않은 수업만 */
+  function sessionOptionsHTML(data, studentId) {
+    return data.days.map((day) => {
+      const items = day.sessions.filter((s) => s.bookable);
+      if (!items.length) return '';
+      const date = new Date(day.startISO);
+      return `<optgroup label="${esc(midDate(date))}">${items.map((s) => {
+        const start = new Date(s.startISO);
+        const taken = s.bookings.some((b) => b.studentId === studentId);
+        return `<option value="${esc(s.id)}"${s.id === UI.adminSession ? ' selected' : ''}>${timeHM(start)} ${esc(s.className)}${taken ? ' · 예약됨' : ''}</option>`;
+      }).join('')}</optgroup>`;
+    }).join('');
+  }
+
+  function adminBookHTML(data) {
+    const students = data.students.filter((s) => s.status === 'active');
+    if (!students.length) {
+      return '<p class="admin-empty">지금 예약을 대신 넣을 수 있는 수강생이 없어요. 수강권을 먼저 부여해 주세요.</p>';
+    }
+
+    const picked = students.some((s) => s.id === UI.adminStudent) ? UI.adminStudent : students[0].id;
+    UI.adminStudent = picked;
+
+    const studentOptions = students.map((s) => {
+      const p = s.pass;
+      const remain = p ? ` (${p.remaining}회 남음)` : '';
+      return `<option value="${esc(s.id)}"${s.id === picked ? ' selected' : ''}>${esc(s.name)} · ${esc(s.code)}${esc(remain)}</option>`;
+    }).join('');
+
+    const sessionOptions = sessionOptionsHTML(data, picked);
+    if (!sessionOptions.trim()) {
+      return '<p class="admin-empty">아직 시작하지 않은 수업이 없어요.</p>';
+    }
+
+    return `
+      <div class="book-row">
+        <select class="select" id="bookStudent" aria-label="대리 예약할 수강생">${studentOptions}</select>
+        <select class="select" id="bookSession" aria-label="대리 예약할 수업">${sessionOptions}</select>
+        <button class="btn-mini btn-mini--butter" type="button" data-admin-book>대리 예약</button>
+      </div>
+      <p class="grant-hint">고른 수강생의 잔여 횟수에서 1회 차감되고, 수강생 화면에 바로 반영됩니다. 만료·소진·중복·같은 시간 예약은 그대로 막힙니다.</p>`;
+  }
+
+  let ADMIN_DATA = null;
+
   async function renderAdmin() {
     const body = $('#adminBody');
     if (!body) return;
     const data = await api.adminData();
+    ADMIN_DATA = data;
 
     const requests = data.pending.length
       ? data.pending.map((req) => `
@@ -617,7 +689,13 @@
       </section>
 
       <section class="admin-block">
+        <div class="admin-h"><h4>대리 예약 / book</h4><span>강사 권한</span></div>
+        ${adminBookHTML(data)}
+      </section>
+
+      <section class="admin-block">
         <div class="admin-h"><h4>예약 현황 / schedule</h4><span>오늘부터 ${CONFIG.bookingWindowDays}일</span></div>
+        <p class="grant-hint">예약 옆 취소는 강사 권한입니다. 수강생의 1시간 전 마감과 상관없이 취소되고 횟수가 돌아갑니다.</p>
         ${adminDaysHTML(data.days)}
       </section>
 
@@ -641,7 +719,59 @@
     });
 
     const body = $('#adminBody');
+    body.addEventListener('change', (event) => {
+      const studentSelect = event.target.closest('#bookStudent');
+      if (!studentSelect) return;
+      UI.adminStudent = studentSelect.value;
+      UI.adminSession = '';
+      const sessionSelect = $('#bookSession');
+      if (sessionSelect && ADMIN_DATA) {
+        sessionSelect.innerHTML = sessionOptionsHTML(ADMIN_DATA, UI.adminStudent);
+      }
+    });
+
     body.addEventListener('click', async (event) => {
+      const bookBtn = event.target.closest('[data-admin-book]');
+      if (bookBtn) {
+        const studentId = ($('#bookStudent') || {}).value;
+        const sessionId = ($('#bookSession') || {}).value;
+        if (!studentId || !sessionId) {
+          toast('수강생과 수업을 골라 주세요.', true);
+          return;
+        }
+        UI.adminSession = sessionId;
+        bookBtn.disabled = true;
+        try {
+          const v = await api.adminBook(studentId, sessionId);
+          const session = (await api.listSessions()).find((s) => s.id === sessionId);
+          await renderAdmin();
+          await renderBooking();
+          toast(session
+            ? `${v.name}님 대리 예약 · ${shortDate(new Date(session.startISO))} ${timeHM(new Date(session.startISO))}`
+            : `${v.name}님 대리 예약을 넣었어요.`);
+        } catch (err) {
+          bookBtn.disabled = false;
+          toast(err.message || '대리 예약을 넣지 못했어요.', true);
+        }
+        return;
+      }
+
+      const adminCancelBtn = event.target.closest('[data-admin-cancel]');
+      if (adminCancelBtn) {
+        const label = adminCancelBtn.dataset.bkLabel || '';
+        adminCancelBtn.disabled = true;
+        try {
+          await api.adminCancel(adminCancelBtn.dataset.adminCancel);
+          await renderAdmin();
+          await renderBooking();
+          toast(label ? `예약을 취소했어요 · ${label} (횟수 1회 복구)` : '예약을 취소했어요. 횟수가 돌아왔습니다.');
+        } catch (err) {
+          adminCancelBtn.disabled = false;
+          toast(err.message || '취소하지 못했어요.', true);
+        }
+        return;
+      }
+
       const approveBtn = event.target.closest('[data-approve]');
       if (approveBtn) {
         const id = approveBtn.dataset.approve;
