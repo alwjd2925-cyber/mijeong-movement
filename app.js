@@ -50,8 +50,70 @@
     adminStudent: '',   // 대리 예약 폼에서 마지막으로 고른 수강생
     adminSession: '',   // 대리 예약 폼에서 마지막으로 고른 수업
     onlineProgram: 'morning', // 온라인 클래스 탭
-    onlineWeek: 0,      // 0 = 이번 주
+    onlineWeek: null,   // null = 이번 주, 그 외 'YYYY-MM-DD'(월요일) 주 시작일
+    access: null,       // 로그인한 수강생이 볼 수 있는 범위
   };
+
+  /* ── 수업별 접근 제어 ──────────────────────────────────── */
+  const CLASS_SHORT = {
+    handstand: '핸드스탠드',
+    functional: '펑셔널',
+    morning: '모닝',
+    coaching: '코칭',
+  };
+
+  /* 데모 수강생 — 4가지 수업을 골고루 확인할 수 있게 */
+  const DEMO_STUDENTS = [
+    { id: 'st_new', label: '신규 수강생', hint: '김하늘 · 열린 수업 없음' },
+    { id: 'st_offline', label: '오프라인 4회권', hint: '이서연 · 핸드스탠드 + 펑셔널' },
+    { id: 'st_morning', label: '모닝 모빌리티', hint: '박지우 · 온라인 모닝' },
+    { id: 'st_coaching', label: '온라인 코칭', hint: '정민아 · 코칭 + 핸드스탠드' },
+  ];
+
+  function classMeta(id) {
+    const cls = CLASSES.find((c) => c.id === id);
+    return {
+      id,
+      name: cls ? cls.name : id,
+      short: CLASS_SHORT[id] || (cls ? cls.name : id),
+      mode: cls ? cls.mode : 'online',
+    };
+  }
+
+  function classChipsHTML(v) {
+    const classes = (v && v.classes) || [];
+    if (!classes.length) return '<span class="class-chip is-none">열린 수업 없음</span>';
+    return classes.map((id) => {
+      const meta = classMeta(id);
+      return `<span class="class-chip${meta.mode === 'online' ? ' is-online' : ''}">${esc(meta.short)}</span>`;
+    }).join('');
+  }
+
+  /* 로그인 상태에 따라 볼 수 있는 섹션만 남깁니다 */
+  function applyAccess(v) {
+    const access = v && v.access ? v.access : null;
+    UI.access = access;
+    const showOnline = !!access && access.online.length > 0;
+    const showSequence = !!access && access.sequence;
+
+    const onlineSection = $('#online');
+    const sequenceSection = $('#sequence');
+    if (onlineSection) onlineSection.hidden = !showOnline;
+    if (sequenceSection) sequenceSection.hidden = !showSequence;
+
+    $$('.head-nav a').forEach((link) => {
+      const href = link.getAttribute('href');
+      if (href === '#online') link.hidden = !showOnline;
+      else if (href === '#sequence') link.hidden = !showSequence;
+      else if (href === '#booking') link.textContent = access ? 'booking' : 'login';
+      if (link.hidden) link.classList.remove('is-current');
+    });
+
+    /* 온라인 클래스가 바뀌었을 때 현재 프로그램을 허용된 것 중에서 고릅니다 */
+    if (access && access.online.length && access.online.indexOf(UI.onlineProgram) === -1) {
+      UI.onlineProgram = access.online[0];
+    }
+  }
 
   function saveCurrent() {
     try {
@@ -142,6 +204,11 @@
 
   function statusText(v) {
     if (!v) return '아직 로그인하지 않았어요';
+    const offline = v.access ? v.access.offline : [];
+    const online = v.access ? v.access.online : [];
+    if (!offline.length && online.length) {
+      return `온라인 클래스 수강 중 · ${online.map((id) => classMeta(id).name).join(' · ')}`;
+    }
     if (v.status === 'active') return `${v.pass.label} 사용 중`;
     if (v.status === 'pending') return v.pending.type === 'renewal' ? '재등록 요청 확인 중' : '등록 신청 확인 중';
     if (v.status === 'exhausted') return `${v.pass.label} 사용 완료`;
@@ -163,6 +230,7 @@
         <div>
           <p class="stu-name">${esc(v.name)}<span class="stu-code">${esc(v.code)}</span></p>
           <p class="stu-sub">${esc(statusText(v))}</p>
+          <p class="stu-classes">${classChipsHTML(v)}</p>
         </div>
         <button class="link-btn" type="button" data-logout>로그아웃</button>
       </div>`;
@@ -172,12 +240,46 @@
     if (!v) {
       return `
         <div class="state-banner">
-          <p class="state-title">수강생을 선택하면 예약할 수 있어요</p>
+          <p class="state-title">로그인하면 내 수업만 보여요</p>
           <p class="state-sub">
-            수강권이 있는 수강생은 날짜를 골라 바로 예약하고, 수업 시작 1시간 전까지 취소할 수 있습니다.
-            수강권이 없다면 등록을 신청해 주세요.
+            수업별로 열린 페이지만 보입니다. 수강권이 있는 수강생은 날짜를 골라 바로 예약하고,
+            온라인 클래스 수강생은 체크와 노트를 남길 수 있어요.
           </p>
         </div>`;
+    }
+
+    if (!v.access || !v.access.offline.length) {
+      const online = (v.access && v.access.online) || [];
+      if (online.length) {
+        return `
+        <div class="state-banner is-open">
+          <p class="state-title">온라인 클래스 수강 중</p>
+          <p class="state-sub">
+            ${online.map((id) => esc(classMeta(id).name)).join(' · ')} — 예약 없이 위 online 섹션에서
+            주차별 체크와 노트를 남길 수 있어요.
+          </p>
+          <button class="btn btn-line btn--sm" type="button" data-goto-online>온라인 클래스로 이동</button>
+        </div>`;
+      }
+      if (v.status === 'pending') {
+        return `
+        <div class="state-banner is-pending">
+          <p class="state-title">${v.pending.type === 'renewal' ? '재등록 요청' : '등록 신청'}을 보냈어요</p>
+          <p class="state-sub">
+            강사가 확인하고 수업을 열어 주면 바로 이용할 수 있어요.
+            보낸 시각 ${fullDate(new Date(v.pending.createdAt))} ${timeHM(new Date(v.pending.createdAt))}
+          </p>
+        </div>`;
+      }
+      return `
+      <div class="state-banner">
+        <p class="state-title">아직 열린 수업이 없어요</p>
+        <p class="state-sub">
+          등록을 신청하면 강사가 확인하고 수강할 수업을 열어 드립니다.
+          열린 수업에 따라 예약·체크·노트 화면이 보입니다.
+        </p>
+      </div>
+      <button class="btn btn-butter btn-wide" type="button" data-action="register">등록 <span>신규 등록 신청</span></button>`;
     }
 
     if (v.status === 'active') {
@@ -318,6 +420,17 @@
     });
   }
 
+  /* 데모 수강생 버튼 — 각 버튼이 어떤 수업을 보는지 함께 표시 */
+  function renderDemoSwitch() {
+    const wrap = $('#demoSwitch');
+    if (!wrap) return;
+    wrap.innerHTML = DEMO_STUDENTS.map((demo) => `
+      <button type="button" class="demo-btn" data-demo="${esc(demo.id)}">
+        <span class="demo-label">${esc(demo.label)}</span>
+        <span class="demo-hint">${esc(demo.hint)}</span>
+      </button>`).join('');
+  }
+
   async function renderBooking() {
     const area = $('#studentArea');
     if (!area) return;
@@ -330,13 +443,17 @@
         saveCurrent();
       }
     }
+    applyAccess(student);
+
     const sessions = await api.listSessions();
+    const offline = student && student.access ? student.access.offline : [];
+    const visibleSessions = sessions.filter((s) => offline.indexOf(s.classId) !== -1);
     markDemo(student ? student.id : null);
 
     area.innerHTML = `
       ${identityHTML(student)}
       ${statusBlockHTML(student)}
-      ${scheduleHTML(student, sessions)}`;
+      ${offline.length ? scheduleHTML(student, visibleSessions) : ''}`;
 
     await renderOnline();
   }
@@ -388,19 +505,31 @@
       const logoutBtn = event.target.closest('[data-logout]');
       if (logoutBtn) {
         UI.studentId = null;
+        UI.onlineWeek = null;
         saveCurrent();
         await renderBooking();
         toast('로그아웃했어요.');
+        return;
+      }
+
+      const gotoOnline = event.target.closest('[data-goto-online]');
+      if (gotoOnline) {
+        const section = $('#online');
+        if (section && !section.hidden) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     });
 
-    $$('#demoSwitch button').forEach((btn) => {
-      btn.addEventListener('click', async () => {
+    const demoSwitch = $('#demoSwitch');
+    if (demoSwitch) {
+      demoSwitch.addEventListener('click', async (event) => {
+        const btn = event.target.closest('[data-demo]');
+        if (!btn) return;
         UI.studentId = btn.dataset.demo;
+        UI.onlineWeek = null;
         saveCurrent();
         await renderBooking();
       });
-    });
+    }
 
     const form = $('#loginForm');
     if (form) {
@@ -410,6 +539,7 @@
         try {
           const student = await api.login({ name: data.get('name'), code: data.get('code') });
           UI.studentId = student.id;
+          UI.onlineWeek = null;
           saveCurrent();
           form.reset();
           await renderBooking();
@@ -447,6 +577,37 @@
         : offsetWeeks === 1 ? '다음 주'
           : offsetWeeks < 0 ? `${-offsetWeeks}주 전` : `${offsetWeeks}주 후`;
     return `${base} · ${start.getMonth() + 1}.${start.getDate()}–${end.getMonth() + 1}.${end.getDate()}`;
+  }
+
+  /* 'YYYY-MM-DD'(월요일) → 그 주의 표기 */
+  function weekKeyLabel(key) {
+    const [y, m, d] = String(key).split('-').map(Number);
+    const start = new Date(y, m - 1, d);
+    const end = new Date(start.getTime() + 6 * 86400000);
+    const diff = Math.round((start - weekStart(0)) / (7 * 86400000));
+    const base = diff === 0 ? '이번 주'
+      : diff === -1 ? '지난주'
+        : diff === 1 ? '다음 주'
+          : diff < 0 ? `${-diff}주 전` : `${diff}주 후`;
+    return `${base} · ${start.getMonth() + 1}.${start.getDate()}–${end.getMonth() + 1}.${end.getDate()}`;
+  }
+
+  function currentWeekKey() {
+    return UI.onlineWeek || api.weekKey();
+  }
+
+  /* 주차 선택지 — 최근 5주 + 기록이 있는 주(노트 카드를 눌러 오래된 주도 열 수 있음) */
+  function weekOptions(records, keepKey) {
+    const keys = new Set(ONLINE_WEEKS.map((w) => localKey(weekStart(w))));
+    Object.keys(records || {}).forEach((key) => keys.add(key));
+    if (keepKey) keys.add(keepKey);
+    return Array.from(keys).sort();
+  }
+
+  /* 지금 수강생이 볼 수 있는 온라인 프로그램 */
+  function allowedPrograms() {
+    const allowed = UI.access ? UI.access.online : [];
+    return allowed.map((id) => ONLINE[id]).filter(Boolean);
   }
 
   function onlineCounts(program, record) {
@@ -518,54 +679,48 @@
   async function renderOnline() {
     const panel = $('#trackPanel');
     if (!panel) return;
-    const programs = Object.values(ONLINE);
-    const program = ONLINE[UI.onlineProgram] || programs[0];
-    UI.onlineProgram = program.id;
 
-    const tabs = programs.map((p) => `
-      <button class="ot-tab${p.id === program.id ? ' is-active' : ''}" type="button" role="tab"
-        aria-selected="${p.id === program.id ? 'true' : 'false'}" data-program="${esc(p.id)}">
-        <span class="mode is-online">온라인</span>${esc(p.name)}
-      </button>`).join('');
-
-    const head = `
-      <div class="track-head">
-        <div class="ot-tabs" role="tablist" aria-label="온라인 클래스">${tabs}</div>
-      </div>
-      <p class="track-sub">${esc(program.sub)}</p>`;
-
-    if (!UI.studentId) {
-      panel.innerHTML = `
-        ${head}
-        <div class="track-lock">
-          <p class="track-lock-title">로그인하면 체크와 노트가 저장됩니다</p>
-          <p class="track-lock-sub">수강생 이름과 코드로 로그인하면 주차별 체크 기록과 ${esc(program.noteLabel)}를 남길 수 있어요.</p>
-          <button class="btn btn-line btn--sm" type="button" data-goto-login>수강생 로그인</button>
-        </div>
-        ${trackTableHTML(program, null, true)}`;
+    const programs = allowedPrograms();
+    if (!UI.studentId || !programs.length) {
+      panel.innerHTML = '';
       return;
+    }
+
+    let program = ONLINE[UI.onlineProgram];
+    if (!program || !programs.some((p) => p.id === program.id)) {
+      program = programs[0];
+      UI.onlineProgram = program.id;
     }
 
     const student = await api.getStudent(UI.studentId);
     if (!student) {
       UI.studentId = null;
       saveCurrent();
-      await renderOnline();
+      await renderBooking();
       return;
     }
 
     const records = await api.getOnline(UI.studentId);
-    const key = localKey(weekStart(UI.onlineWeek));
+    const key = currentWeekKey();
     const record = ((records[program.id] || {})[key]) || null;
     const { checked, count, total } = onlineCounts(program, record);
-    const weekOptions = ONLINE_WEEKS.map((w) =>
-      `<option value="${w}"${w === UI.onlineWeek ? ' selected' : ''}>${esc(weekLabel(w))}</option>`).join('');
+    const options = weekOptions(records[program.id], key)
+      .map((k) => `<option value="${esc(k)}"${k === key ? ' selected' : ''}>${esc(weekKeyLabel(k))}</option>`)
+      .join('');
+
+    const tabs = programs.length > 1
+      ? `<div class="ot-tabs" role="tablist" aria-label="온라인 클래스">${programs.map((p) => `
+          <button class="ot-tab${p.id === program.id ? ' is-active' : ''}" type="button" role="tab"
+            aria-selected="${p.id === program.id ? 'true' : 'false'}" data-program="${esc(p.id)}">
+            <span class="mode is-online">온라인</span>${esc(p.name)}
+          </button>`).join('')}</div>`
+      : `<p class="ot-single"><span class="mode is-online">온라인</span>${esc(program.name)}</p>`;
 
     panel.innerHTML = `
       <div class="track-head">
-        <div class="ot-tabs" role="tablist" aria-label="온라인 클래스">${tabs}</div>
+        ${tabs}
         <div class="ot-week">
-          <select class="select" id="onlineWeek" aria-label="주차 선택">${weekOptions}</select>
+          <select class="select" id="onlineWeek" aria-label="주차 선택">${options}</select>
         </div>
       </div>
       <p class="track-sub">${esc(program.sub)}</p>
@@ -573,7 +728,8 @@
       <div class="track-body">
         ${trackTableHTML(program, record, false)}
         ${trackNoteHTML(program, record, false)}
-      </div>`;
+      </div>
+      ${noteLogHTML(records, programs)}`;
   }
 
   function refreshTrackSummary(record) {
@@ -585,14 +741,81 @@
     sum.innerHTML = `<b>${checked}</b> / ${total} 동작 · 이 주 ${count}회 체크 · <span class="track-who">${who ? esc(who.textContent) : ''}</span>`;
   }
 
+  /* ── 내 노트 기록 ─────────────────────────────────────── */
+  function noteEntries(records, programs) {
+    const out = [];
+    programs.forEach((program) => {
+      const bucket = (records && records[program.id]) || {};
+      Object.keys(bucket).forEach((weekKey) => {
+        const rec = bucket[weekKey] || {};
+        const note = String(rec.note || '');
+        if (!note.trim()) return;
+        out.push({ program, weekKey, note, counts: onlineCounts(program, rec) });
+      });
+    });
+    return out.sort((a, b) => {
+      if (a.weekKey !== b.weekKey) return a.weekKey < b.weekKey ? 1 : -1;
+      return a.program.id.localeCompare(b.program.id);
+    });
+  }
+
+  function noteLogHTML(records, programs) {
+    const entries = noteEntries(records, programs);
+    const many = programs.length > 1;
+    const head = `
+      <div class="nl-head">
+        <h4>내 노트 기록 <span>my notes</span></h4>
+        <span class="nl-count">${entries.length ? `${entries.length}주` : ''}</span>
+      </div>`;
+
+    if (!entries.length) {
+      return `
+      <section class="note-log" id="noteLog" aria-label="내 노트 기록">
+        ${head}
+        <p class="note-empty">아직 작성한 노트가 없어요. 위에 오늘 몸의 느낌을 적고 <b>노트 저장</b>을 누르면 여기에 쌓입니다.</p>
+      </section>`;
+    }
+
+    return `
+      <section class="note-log" id="noteLog" aria-label="내 노트 기록">
+        ${head}
+        <ul class="note-list">
+          ${entries.map((entry) => `
+            <li>
+              <button class="note-card" type="button"
+                data-open-week="${esc(entry.weekKey)}"
+                data-open-program="${esc(entry.program.id)}"
+                aria-label="${esc(weekKeyLabel(entry.weekKey))} 노트 열어 수정하기">
+                <span class="nc-top">
+                  <span class="nc-week">${esc(weekKeyLabel(entry.weekKey))}</span>
+                  ${many ? `<span class="nc-prog">${esc(entry.program.name)}</span>` : ''}
+                </span>
+                <span class="nc-sum">${entry.counts.checked}/${entry.counts.total} 동작 · ${entry.counts.count}회 체크</span>
+                <span class="nc-body">${esc(entry.note)}</span>
+              </button>
+            </li>`).join('')}
+        </ul>
+      </section>`;
+  }
+
+  async function refreshNoteLog() {
+    const current = $('#noteLog');
+    if (!current || !UI.studentId) return;
+    const records = await api.getOnline(UI.studentId);
+    const holder = document.createElement('div');
+    holder.innerHTML = noteLogHTML(records, allowedPrograms());
+    const fresh = holder.firstElementChild;
+    if (fresh) current.replaceWith(fresh);
+  }
+
   async function saveOnlineNote(silent) {
     const area = $('#onlineNote');
     if (!area || !UI.studentId) return null;
-    const key = localKey(weekStart(UI.onlineWeek));
     try {
-      const rec = await api.setOnlineNote(UI.studentId, UI.onlineProgram, key, area.value);
+      const rec = await api.setOnlineNote(UI.studentId, UI.onlineProgram, currentWeekKey(), area.value);
       const status = $('#noteStatus');
       if (status) status.textContent = `저장됨 · ${timeHM(new Date())}`;
+      await refreshNoteLog();
       if (!silent) toast('노트를 저장했어요.');
       return rec;
     } catch (err) {
@@ -613,33 +836,37 @@
         return;
       }
 
-      const goto = event.target.closest('[data-goto-login]');
-      if (goto) {
-        const section = $('#booking');
-        if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        const nameInput = $('#loginForm input[name="name"]');
-        if (nameInput) nameInput.focus({ preventScroll: true });
+      /* 노트 카드 → 그 주차 · 프로그램으로 이동해 바로 수정 */
+      const card = event.target.closest('[data-open-week]');
+      if (card) {
+        UI.onlineProgram = card.dataset.openProgram || UI.onlineProgram;
+        UI.onlineWeek = card.dataset.openWeek || null;
+        await renderOnline();
+        const noteBox = $('.track-note');
+        if (noteBox) noteBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
 
       const tick = event.target.closest('[data-tick]');
       if (tick && UI.studentId) {
+        if (tick.dataset.busy === '1') return;
         const [movementId, dayStr] = tick.dataset.tick.split(':');
         const on = !tick.classList.contains('is-on');
-        tick.disabled = true;
+        tick.dataset.busy = '1';
         try {
           const rec = await api.setOnlineCheck(
             UI.studentId, UI.onlineProgram,
-            localKey(weekStart(UI.onlineWeek)), movementId, Number(dayStr), on,
+            currentWeekKey(), movementId, Number(dayStr), on,
           );
           tick.classList.toggle('is-on', on);
           tick.setAttribute('aria-pressed', on ? 'true' : 'false');
           tick.textContent = on ? '✓' : '';
           refreshTrackSummary(rec);
+          await refreshNoteLog();
         } catch (err) {
           toast(err.message || '체크를 저장하지 못했어요.', true);
         }
-        tick.disabled = false;
+        delete tick.dataset.busy;
         return;
       }
 
@@ -650,7 +877,7 @@
 
     panel.addEventListener('change', async (event) => {
       if (event.target.id !== 'onlineWeek') return;
-      UI.onlineWeek = Number(event.target.value);
+      UI.onlineWeek = event.target.value || null;
       await renderOnline();
     });
 
@@ -770,11 +997,19 @@
     return type === 'renewal' ? '재등록 요청' : '신규 등록 신청';
   }
 
+  /* 수업 4가지 체크박스 — 강사가 열어 줄 수업을 고릅니다 */
+  function classPicksHTML(classes, attr, id) {
+    const picked = classes || [];
+    return `<div class="cls-picks" ${attr}="${esc(id)}">${CLASSES.map((cls) => `
+      <label class="cls-pick">
+        <input type="checkbox" value="${esc(cls.id)}"${picked.indexOf(cls.id) !== -1 ? ' checked' : ''}>
+        <span>${esc(CLASS_SHORT[cls.id] || cls.name)}</span>
+      </label>`).join('')}</div>`;
+  }
+
   function adminStudentsHTML(students) {
     const rows = students.map((s) => {
-      const pass = s.pass
-        ? `${s.pass.label} ${s.pass.remaining}/${s.pass.total} · ${fullDate(new Date(s.pass.expiresAt))}까지`
-        : '—';
+      const pass = s.pass ? `${s.pass.label} ${s.pass.remaining}/${s.pass.total}` : '수강권 없음';
       const statusLabel = {
         active: '사용 중',
         new: '신규',
@@ -783,15 +1018,21 @@
       }[s.status] || s.status;
       return `
         <tr>
-          <td>${esc(s.name)}<span class="req-sub">${esc(s.code)}</span></td>
-          <td><span class="pill${s.status === 'active' ? ' is-active' : ''}">${esc(statusLabel)}</span></td>
-          <td>${esc(pass)}</td>
+          <td class="stu-cell">
+            <span class="stu-cell-name">${esc(s.name)}</span>
+            <span class="req-sub">${esc(s.code)}</span>
+            <span class="stu-cell-meta">
+              <span class="pill${s.status === 'active' ? ' is-active' : ''}">${esc(statusLabel)}</span>
+              <span>${esc(pass)}</span>
+            </span>
+          </td>
+          <td class="cls-cell">${classPicksHTML(s.classes, 'data-cls-student', s.id)}</td>
         </tr>`;
     }).join('');
 
     return `
-      <table class="stu-table">
-        <thead><tr><th>수강생</th><th>상태</th><th>수강권</th></tr></thead>
+      <table class="stu-table stu-table--cls">
+        <thead><tr><th>수강생 · 수강권</th><th>열린 수업</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   }
@@ -845,10 +1086,12 @@
     }).join('');
   }
 
-  /* 대리 예약 폼 — 수강권이 살아 있는 수강생과 아직 시작하지 않은 수업만 */
+  /* 대리 예약 폼 — 수강권이 살아 있고 오프라인 수업이 열린 수강생 + 그 수강생의 수업만 */
   function sessionOptionsHTML(data, studentId) {
+    const student = data.students.find((s) => s.id === studentId);
+    const classes = (student && student.classes) || [];
     return data.days.map((day) => {
-      const items = day.sessions.filter((s) => s.bookable);
+      const items = day.sessions.filter((s) => s.bookable && classes.indexOf(s.classId) !== -1);
       if (!items.length) return '';
       const date = new Date(day.startISO);
       return `<optgroup label="${esc(midDate(date))}">${items.map((s) => {
@@ -860,9 +1103,11 @@
   }
 
   function adminBookHTML(data) {
-    const students = data.students.filter((s) => s.status === 'active');
+    const students = data.students.filter(
+      (s) => s.status === 'active' && (s.classes || []).some((c) => OFFLINE_CLASS_IDS.indexOf(c) !== -1),
+    );
     if (!students.length) {
-      return '<p class="admin-empty">지금 예약을 대신 넣을 수 있는 수강생이 없어요. 수강권을 먼저 부여해 주세요.</p>';
+      return '<p class="admin-empty">지금 대리 예약을 넣을 수 있는 수강생이 없어요. 수강권을 부여하고 오프라인 수업을 열어 주세요.</p>';
     }
 
     const picked = students.some((s) => s.id === UI.adminStudent) ? UI.adminStudent : students[0].id;
@@ -918,6 +1163,7 @@
               <span class="req-sub">${fullDate(new Date(req.createdAt))} ${timeHM(new Date(req.createdAt))}</span>
             </div>
             <div class="req-act">
+              ${classPicksHTML(req.classes, 'data-req-cls', req.id)}
               <select class="select" data-req-type="${esc(req.id)}" aria-label="부여할 수강권">
                 <option value="4">4회권</option>
                 <option value="8">8회권</option>
@@ -938,7 +1184,26 @@
       </section>
 
       <section class="admin-block">
-        <div class="admin-h"><h4>수강생 / students</h4><span>${data.students.length}명</span></div>
+        <div class="admin-h"><h4>새 회원 / new</h4><span>열 수업 체크</span></div>
+        <div class="reg-row">
+          <input class="reg-input" id="regName" type="text" placeholder="이름" aria-label="새 회원 이름">
+          <input class="reg-input" id="regCode" type="text" placeholder="수강 코드 (MJ-3001)" aria-label="새 회원 수강 코드">
+        </div>
+        ${classPicksHTML([], 'data-reg-cls', 'new')}
+        <div class="reg-row">
+          <select class="select" id="regPass" aria-label="수강권 종류">
+            <option value="">수강권 없음</option>
+            <option value="4">4회권 · 60일</option>
+            <option value="8">8회권 · 90일</option>
+          </select>
+          <button class="btn-mini btn-mini--butter" type="button" data-register>회원 등록</button>
+        </div>
+        <p class="grant-hint">체크한 수업만 회원 화면에 보입니다. 오프라인 수업(핸드스탠드·펑셔널)은 수강권이 있어야 예약할 수 있고, 온라인 수업은 체크·노트가 열립니다.</p>
+      </section>
+
+      <section class="admin-block">
+        <div class="admin-h"><h4>수강생 · 수업 / students</h4><span>${data.students.length}명</span></div>
+        <p class="grant-hint">체크를 바꾸면 그 수강생의 화면에 바로 반영됩니다.</p>
         ${adminStudentsHTML(data.students)}
       </section>
 
@@ -991,14 +1256,32 @@
     });
 
     const body = $('#adminBody');
-    body.addEventListener('change', (event) => {
+    body.addEventListener('change', async (event) => {
       const studentSelect = event.target.closest('#bookStudent');
-      if (!studentSelect) return;
-      UI.adminStudent = studentSelect.value;
-      UI.adminSession = '';
-      const sessionSelect = $('#bookSession');
-      if (sessionSelect && ADMIN_DATA) {
-        sessionSelect.innerHTML = sessionOptionsHTML(ADMIN_DATA, UI.adminStudent);
+      if (studentSelect) {
+        UI.adminStudent = studentSelect.value;
+        UI.adminSession = '';
+        const sessionSelect = $('#bookSession');
+        if (sessionSelect && ADMIN_DATA) {
+          sessionSelect.innerHTML = sessionOptionsHTML(ADMIN_DATA, UI.adminStudent);
+        }
+        return;
+      }
+
+      /* 수강생 수업 체크/해제 → 바로 저장 */
+      const classBox = event.target.closest('[data-cls-student] input[type="checkbox"]');
+      if (classBox) {
+        const holder = classBox.closest('[data-cls-student]');
+        const studentId = holder.dataset.clsStudent;
+        const classes = Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value);
+        try {
+          const v = await api.adminSetClasses(studentId, classes);
+          await renderAdmin();
+          await renderBooking();
+          toast(`${v.name}님 수업 ${classes.length}개로 저장했어요.`);
+        } catch (err) {
+          toast(err.message || '수업을 바꾸지 못했어요.', true);
+        }
       }
     });
 
@@ -1049,13 +1332,39 @@
         const id = approveBtn.dataset.approve;
         const select = body.querySelector(`[data-req-type="${id}"]`);
         const type = select ? select.value : '4';
+        const holder = body.querySelector(`[data-req-cls="${id}"]`);
+        const classes = holder
+          ? Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value)
+          : undefined;
         try {
-          await api.approveRequest(id, type);
+          await api.approveRequest(id, type, classes);
           await renderAdmin();
           await renderBooking();
-          toast('수강권을 개시했어요.');
+          toast('수강권과 수업을 열었어요.');
         } catch (err) {
           toast(err.message, true);
+        }
+        return;
+      }
+
+      const registerBtn = event.target.closest('[data-register]');
+      if (registerBtn) {
+        const name = ($('#regName') || {}).value || '';
+        const code = ($('#regCode') || {}).value || '';
+        const passType = ($('#regPass') || {}).value || '';
+        const holder = body.querySelector('[data-reg-cls]');
+        const classes = holder
+          ? Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value)
+          : [];
+        registerBtn.disabled = true;
+        try {
+          const v = await api.adminRegister({ name, code, classes, passType });
+          await renderAdmin();
+          await renderBooking();
+          toast(`${v.name}님을 등록했어요 · 열린 수업 ${v.classes.length}개`);
+        } catch (err) {
+          registerBtn.disabled = false;
+          toast(err.message || '회원을 등록하지 못했어요.', true);
         }
         return;
       }
@@ -1155,6 +1464,7 @@
     UI.studentId = loadCurrent();
     renderClasses();
     renderSequence();
+    renderDemoSwitch();
     bindBooking();
     bindOnline();
     bindAdmin();

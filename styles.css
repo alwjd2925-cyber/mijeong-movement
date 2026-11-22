@@ -10,8 +10,8 @@
   --ink-25: rgba(24, 24, 24, 0.24);
   --paper: #fafaf8;
   --paper-2: #f4f1ea;
-  --butter: #e8d54b;
-  --butter-2: #f2df5e;
+  --butter: #f3ff00;
+  --butter-2: #e4f000;
   --line: rgba(24, 24, 24, 0.13);
   --line-strong: rgba(24, 24, 24, 0.22);
   --font: "Instrument Sans", "Pretendard Variable", Pretendard, -apple-system,
@@ -65,6 +65,10 @@ svg {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 button {
@@ -345,6 +349,11 @@ ol {
   font-weight: 400;
   color: rgba(255, 255, 255, 0.62);
   margin-left: 4px;
+}
+
+/* 노란 배경 위에서는 보조 문구도 검정 계열로 */
+.btn-butter.btn-wide span {
+  color: rgba(24, 24, 24, 0.6);
 }
 
 .btn:disabled {
@@ -631,6 +640,7 @@ table.track-table .d-en {
 
 table.track-table tbody th,
 table.track-table tbody td {
+  height: 34px;
   padding: 3px 0;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
@@ -664,15 +674,22 @@ table.track-table tbody th.td-ex {
 }
 
 .tick {
+  display: block;               /* 기준선(baseline) 정렬에서 빼 위치를 고정 */
   width: 100%;
   height: 28px;
+  min-height: 28px;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: 3px;
   background: #fff;
   font-size: 12px;
-  line-height: 1;
+  font-weight: 500;             /* 체크 전/후 동일 */
+  line-height: 26px;            /* 28px - 테두리 2px, 항상 같음 */
+  text-align: center;
+  vertical-align: middle;
   color: transparent;
-  transition: background 0.14s, border-color 0.14s;
+  transform: none;
+  transition: background-color 0.14s, border-color 0.14s, color 0.14s;
 }
 
 .tick:hover {
@@ -683,12 +700,21 @@ table.track-table tbody th.td-ex {
   background: var(--butter);
   border-color: var(--butter);
   color: var(--ink);
-  font-weight: 600;
+}
+
+.tick.is-on:hover {
+  border-color: var(--ink);
 }
 
 .tick:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* 저장 중에도 크기·투명도가 바뀌지 않도록 */
+.tick[data-busy="1"] {
+  opacity: 1;
+  cursor: progress;
 }
 
 .track-note {
@@ -762,6 +788,131 @@ table.track-table tbody th.td-ex {
   line-height: 1.7;
   color: var(--ink-70);
   word-break: keep-all;
+}
+
+/* 온라인 프로그램이 하나일 때 (탭 대신 이름만) */
+.ot-single {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* ── 내 노트 기록 ─────────────────────────────────────────── */
+.note-log {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+
+.nl-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.nl-head h4 {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.nl-head h4 span {
+  margin-left: 6px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--ink-45);
+  text-transform: lowercase;
+  font-weight: 400;
+}
+
+.nl-count {
+  font-size: 10.5px;
+  color: var(--ink-45);
+}
+
+.note-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.note-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  transition: border-color 0.16s, background-color 0.16s;
+}
+
+.note-card:hover {
+  border-color: var(--ink-25);
+  background: var(--paper);
+}
+
+.nc-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.nc-week {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.nc-prog {
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--butter);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.nc-sum {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--ink-45);
+}
+
+.nc-body {
+  display: block;
+  margin-top: 7px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-70);
+  white-space: pre-wrap;       /* 노트 줄바꿈 그대로 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.note-empty {
+  margin-top: 10px;
+  padding: 16px 14px;
+  border: 1px dashed var(--line-strong);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--ink-45);
+  text-align: center;
+  word-break: keep-all;
+}
+
+.note-empty b {
+  color: var(--ink-70);
+  font-weight: 600;
 }
 
 /* 강사 모드: 온라인 체크 요약 */
@@ -866,6 +1017,31 @@ table.track-table tbody th.td-ex {
   color: #fff;
 }
 
+.demo-switch .demo-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  text-align: left;
+  line-height: 1.3;
+}
+
+.demo-label {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.demo-hint {
+  font-size: 9.5px;
+  color: var(--ink-45);
+}
+
+.demo-switch button.is-active .demo-hint {
+  color: rgba(255, 255, 255, 0.72);
+}
+
 .login-form {
   display: flex;
   gap: 6px;
@@ -929,6 +1105,34 @@ table.track-table tbody th.td-ex {
 .stu-sub {
   margin-top: 3px;
   font-size: 11.5px;
+  color: var(--ink-45);
+}
+
+.stu-classes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.class-chip {
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-70);
+  white-space: nowrap;
+}
+
+.class-chip.is-online {
+  background: var(--butter);
+  border-color: var(--butter);
+  color: var(--ink);
+}
+
+.class-chip.is-none {
+  border-style: dashed;
   color: var(--ink-45);
 }
 
@@ -1020,8 +1224,17 @@ table.track-table tbody th.td-ex {
 }
 
 .state-banner.is-pending {
-  background: rgba(232, 213, 75, 0.16);
+  background: rgba(243, 255, 0, 0.22);
   border: 1px solid rgba(24, 24, 24, 0.16);
+}
+
+.state-banner.is-open {
+  border-style: solid;
+  border-color: var(--line-strong);
+}
+
+.state-banner .btn {
+  margin-top: 12px;
 }
 
 .state-title {
@@ -1617,8 +1830,16 @@ dialog.modal--admin {
 
 .req-act {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+  justify-content: flex-end;
+}
+
+.req-act .cls-picks {
+  margin-top: 0;
+  flex: 1 1 auto;
+  justify-content: flex-end;
 }
 
 .select {
@@ -1646,6 +1867,94 @@ dialog.modal--admin {
   color: var(--ink-45);
   line-height: 1.6;
   margin-top: 8px;
+}
+
+/* 새 회원 등록 */
+.reg-row {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.reg-input {
+  height: 36px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--paper);
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.reg-input:focus {
+  outline: none;
+  border-color: var(--ink);
+  background: #fff;
+}
+
+.reg-row .select {
+  height: 36px;
+  width: 100%;
+}
+
+/* 수업 체크박스 (강사) */
+.cls-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.cls-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 10.5px;
+  color: var(--ink-45);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cls-pick input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: #cdd900;
+}
+
+.cls-pick:has(input:checked) {
+  border-color: var(--ink);
+  background: var(--butter);
+  color: var(--ink);
+}
+
+table.stu-table--cls td {
+  vertical-align: top;
+  padding-top: 10px;
+}
+
+.stu-cell-name {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.stu-cell-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--ink-45);
+}
+
+.cls-cell {
+  min-width: 0;
 }
 
 .book-row {
@@ -1701,7 +2010,7 @@ table.stu-table td {
 }
 
 .pill.is-active {
-  background: rgba(232, 213, 75, 0.35);
+  background: var(--butter);
   border-color: rgba(24, 24, 24, 0.2);
   color: var(--ink);
 }
@@ -1949,6 +2258,16 @@ details.day[open] summary::after {
     width: auto;
     padding: 0 14px;
   }
+
+  .reg-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .reg-row .reg-input,
+  .reg-row .select {
+    width: auto;
+  }
 }
 
 @media (min-width: 720px) {
@@ -2126,6 +2445,20 @@ details.day[open] summary::after {
   .head-nav a {
     font-size: 9.5px;
     letter-spacing: 0.06em;
+  }
+
+  .note-card {
+    padding: 11px 12px;
+  }
+
+  .nc-body {
+    font-size: 12px;
+    line-height: 1.65;
+  }
+
+  .cls-pick {
+    padding: 3px 7px 3px 5px;
+    font-size: 10px;
   }
 }
 
