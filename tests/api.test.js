@@ -88,15 +88,18 @@ const DAY = 86400000;
 function baseStudents(now) {
   const iso = (ms) => new Date(ms).toISOString();
   return [
-    { id: 'st_a', name: '이서연', code: 'MJ-2048', pass: { type: 4, total: 4, used: 1, issuedAt: iso(now - 10 * DAY), expiresAt: iso(now + 30 * DAY) }, createdAt: iso(now - 30 * DAY) },
-    { id: 'st_sold', name: '박지우', code: 'MJ-0812', pass: { type: 8, total: 8, used: 8, issuedAt: iso(now - 60 * DAY), expiresAt: iso(now + 10 * DAY) }, createdAt: iso(now - 60 * DAY) },
-    { id: 'st_exp', name: '최만료', code: 'MJ-0001', pass: { type: 4, total: 4, used: 1, issuedAt: iso(now - 90 * DAY), expiresAt: iso(now - 1 * DAY) }, createdAt: iso(now - 90 * DAY) },
-    { id: 'st_new', name: '김하늘', code: 'MJ-1024', pass: null, createdAt: iso(now - 1 * DAY) },
+    { id: 'st_a', name: '이서연', code: 'MJ-2048', classes: ['handstand', 'functional', 'morning', 'coaching'], pass: { type: 4, total: 4, used: 1, issuedAt: iso(now - 10 * DAY), expiresAt: iso(now + 30 * DAY) }, createdAt: iso(now - 30 * DAY) },
+    { id: 'st_sold', name: '박지우', code: 'MJ-0812', classes: ['handstand'], pass: { type: 8, total: 8, used: 8, issuedAt: iso(now - 60 * DAY), expiresAt: iso(now + 10 * DAY) }, createdAt: iso(now - 60 * DAY) },
+    { id: 'st_exp', name: '최만료', code: 'MJ-0001', classes: ['handstand'], pass: { type: 4, total: 4, used: 1, issuedAt: iso(now - 90 * DAY), expiresAt: iso(now - 1 * DAY) }, createdAt: iso(now - 90 * DAY) },
+    { id: 'st_new', name: '김하늘', code: 'MJ-1024', classes: [], pass: null, createdAt: iso(now - 1 * DAY) },
+    /* 오프라인만 듣는 수강생 · 모닝만 듣는 수강생 (접근 제어 확인용) */
+    { id: 'st_only_off', name: '한오프', code: 'MJ-3001', classes: ['functional'], pass: { type: 4, total: 4, used: 0, issuedAt: iso(now - 3 * DAY), expiresAt: iso(now + 57 * DAY) }, createdAt: iso(now - 3 * DAY) },
+    { id: 'st_only_morn', name: '남모닝', code: 'MJ-3002', classes: ['morning'], pass: null, createdAt: iso(now - 4 * DAY) },
   ];
 }
 
 function baseState(now, bookings) {
-  return { version: 1, students: baseStudents(now), requests: [], bookings: bookings || [] };
+  return { version: 2, students: baseStudents(now), requests: [], bookings: bookings || [] };
 }
 
 /* 수업 id 찾기: 로컬 시각 기준 */
@@ -260,7 +263,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     eq('강사가 넣은 예약 표시', late.bookings[0].by, 'instructor');
 
     const activeIds = data.students.filter((s) => s.status === 'active').map((s) => s.id);
-    eq('대리 예약 가능한 수강생만', activeIds, ['st_a']);
+    eq('대리 예약 가능한 수강생만', activeIds, ['st_a', 'st_only_off']);
   }
 
   /* ────────────────────────────────────────────────────────
@@ -311,10 +314,10 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     await throws('비로그인 노트 거부', () => api.setOnlineNote('', 'morning', wk, 'x'), /로그인/);
 
     // 프로그램을 나눠서 저장되는지 (모닝 / 코칭)
-    await api.setOnlineCheck('st_a', 'online-coaching', wk, 'b2', 1, true);
+    await api.setOnlineCheck('st_a', 'coaching', wk, 'b2', 1, true);
     const both = await api.getOnline('st_a');
-    eq('프로그램별로 따로 저장', [!!both.morning, !!both['online-coaching']], [true, true]);
-    eq('코칭 동작 체크', both['online-coaching'][wk].checks.b2[1], 1);
+    eq('프로그램별로 따로 저장', [!!both.morning, !!both.coaching], [true, true]);
+    eq('코칭 동작 체크', both.coaching[wk].checks.b2[1], 1);
 
     // 지난 주는 다른 칸
     const lastWeek = api.weekKey(NOW - 7 * DAY);
@@ -328,7 +331,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     const morning = mine && mine.items.find((i) => i.programId === 'morning');
     eq('모닝: 1/8 동작 · 1회', [morning.checked, morning.total, morning.count], [1, 8, 1]);
     eq('모닝 노트 그대로', morning.note, '  오른쪽 어깨가 걸려요  ');
-    const coaching = mine && mine.items.find((i) => i.programId === 'online-coaching');
+    const coaching = mine && mine.items.find((i) => i.programId === 'coaching');
     eq('코칭: 1/8 동작', [coaching.checked, coaching.count], [1, 1]);
     ok('기록 없는 학생은 제외', !admin.online.some((x) => x.studentId === 'st_new'), JSON.stringify(admin.online.map((x) => x.studentId)));
   }
@@ -345,6 +348,114 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     const rec = await api.setOnlineCheck('st_a', 'morning', api.weekKey(), 'mm2', 3, true);
     eq('바로 체크 가능', rec.checks.mm2[3], 1);
     ok('저장소에도 반영', !!read().online.st_a.morning);
+  }
+
+  /* ────────────────────────────────────────────────────────
+     9. 수업별 접근 제어 — 수강한 수업만 예약·기록
+     ──────────────────────────────────────────────────────── */
+  console.log('\n[9] 수업별 접근 제어');
+  {
+    const { api } = makeContext({ now: NOW, state: baseState(NOW) });
+
+    eq('오프라인만 듣는 수강생', await api.accessOf('st_only_off'), {
+      classes: ['functional'], offline: ['functional'], online: [], sequence: false,
+    });
+    eq('모닝만 듣는 수강생', await api.accessOf('st_only_morn'), {
+      classes: ['morning'], offline: [], online: ['morning'], sequence: false,
+    });
+    const accA = await api.accessOf('st_a');
+    eq('네 수업 모두 듣는 수강생', accA.classes, ['handstand', 'functional', 'morning', 'coaching']);
+    eq('핸드스탠드 수강생만 시퀀스 열림', [accA.sequence, (await api.accessOf('st_only_off')).sequence], [true, false]);
+    eq('없는 수강생은 null', await api.accessOf('nope'), null);
+
+    const hsId = await sessionId(api, { y: 2026, m: 11, d: 26, hh: 14, mm: 0 });
+    const fuId = await sessionId(api, { y: 2026, m: 11, d: 29, hh: 10, mm: 0 });
+
+    await throws('펑셔널만 듣는 수강생은 핸드스탠드 예약 불가', () => api.book('st_only_off', hsId), /수강 중인 수업/);
+    const booked = await api.book('st_only_off', fuId);
+    eq('펑셔널 수강생은 펑셔널 예약 가능', booked.bookings[0].classId, 'functional');
+
+    const wk = api.weekKey();
+    await throws('모닝 미수강생은 모닝 체크 불가', () => api.setOnlineCheck('st_only_off', 'morning', wk, 'mm1', 0, true), /수강 중인 온라인/);
+    await throws('모닝 미수강생은 모닝 노트 불가', () => api.setOnlineNote('st_only_off', 'morning', wk, 'x'), /수강 중인 온라인/);
+    const rec = await api.setOnlineCheck('st_only_morn', 'morning', wk, 'mm1', 0, true);
+    eq('모닝 수강생은 모닝 체크 가능', rec.checks.mm1[0], 1);
+    await throws('모닝 수강생은 코칭 노트 불가', () => api.setOnlineNote('st_only_morn', 'coaching', wk, 'x'), /수강 중인 온라인/);
+    const loggedOff = await api.login({ name: '한오프', code: 'MJ-3001' });
+    eq('로그인 뷰에 수업 목록 포함', loggedOff.classes, ['functional']);
+  }
+
+  /* ────────────────────────────────────────────────────────
+     10. 강사: 회원 등록 · 수업 열기/닫기
+     ──────────────────────────────────────────────────────── */
+  console.log('\n[10] 강사 회원 · 수업 관리');
+  {
+    const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
+
+    const created = await api.adminRegister({ name: '문하람', code: 'mj-7700', classes: ['morning', 'coaching'], passType: '4' });
+    eq('등록: 코드는 대문자로', created.code, 'MJ-7700');
+    eq('등록: 수업 2개', created.classes, ['morning', 'coaching']);
+    eq('등록: 수강권 부여', created.pass.total, 4);
+    const logged = await api.login({ name: '문하람', code: 'MJ-7700' });
+    eq('등록한 회원 로그인', logged.id, created.id);
+
+    const changed = await api.adminSetClasses(created.id, ['handstand']);
+    eq('수업 변경', changed.classes, ['handstand']);
+    eq('변경이 저장됨', read().students.find((s) => s.code === 'MJ-7700').classes, ['handstand']);
+    eq('시퀀스도 같이 열림', changed.access.sequence, true);
+
+    await throws('중복 코드 거부', () => api.adminRegister({ name: '다른사람', code: 'MJ-2048', classes: ['morning'] }), /수강 코드/);
+    await throws('짧은 코드 거부', () => api.adminRegister({ name: '다른사람', code: 'x', classes: [] }), /수강 코드/);
+    await throws('이름 없는 등록 거부', () => api.adminRegister({ name: '  ', code: 'MJ-9999', classes: [] }), /이름/);
+
+    await api.request('st_new', 'register', ['morning', 'handstand']);
+    const data = await api.adminData();
+    eq('요청에 희망 수업 담김', data.pending[0].classes, ['handstand', 'morning']);
+    const approved = await api.approveRequest(data.pending[0].id, '8');
+    eq('승인 시 수업이 열림', approved.classes, ['handstand', 'morning']);
+    eq('승인 시 수강권', approved.pass.total, 8);
+    ok('강사 목록에 수업 포함', data.students.find((s) => s.id === 'st_a').classes.length === 4);
+    eq('강사 목록에 수업 로스터', data.roster.map((r) => r.id), ['handstand', 'functional', 'morning', 'coaching']);
+  }
+
+  /* ────────────────────────────────────────────────────────
+     11. 데모 구성 · 레거시 데이터 호환
+     ──────────────────────────────────────────────────────── */
+  console.log('\n[11] 데모 구성 · 호환');
+  {
+    const { api } = makeContext({ now: NOW });
+    const demo = [
+      ['st_new', []],
+      ['st_offline', ['handstand', 'functional']],
+      ['st_morning', ['morning']],
+      ['st_coaching', ['handstand', 'coaching']],
+      ['st_expired', ['functional']],
+    ];
+    for (const [id, classes] of demo) {
+      const v = await api.getStudent(id);
+      eq(`데모 ${v.name} 수업`, v.classes, classes);
+    }
+    const offline = await api.getOnline('st_offline');
+    eq('이서연 샘플 노트 3주치', Object.keys(offline.morning).length, 3);
+    ok('지난주 샘플 노트', !!offline.morning[api.weekKey(NOW - 7 * DAY)].note);
+    ok('2주 전 샘플 노트', !!offline.morning[api.weekKey(NOW - 14 * DAY)].note);
+    ok('정민아 코칭 지난주 노트', !!(await api.getOnline('st_coaching')).coaching[api.weekKey(NOW - 7 * DAY)].note);
+
+    // classes 없던 저장 데이터 (online-coaching 키 포함)
+    const legacy = baseState(NOW);
+    legacy.students.forEach((s) => { delete s.classes; });
+    legacy.online = { st_a: { 'online-coaching': { [api.weekKey()]: { checks: { b2: [1, 0, 0, 0, 0, 0, 0] }, note: 'x', updatedAt: null } } } };
+    const legacyCtx = makeContext({ now: NOW, state: legacy });
+    eq('레거시 수업 추정', (await legacyCtx.api.getStudent('st_a')).classes, ['handstand', 'functional', 'coaching']);
+    ok('online-coaching 기록이 coaching 으로 이동', !!(await legacyCtx.api.getOnline('st_a')).coaching);
+    eq('레거시 기록은 한 곳에만', Object.keys((await legacyCtx.api.getOnline('st_a'))), ['coaching']);
+
+    // version 1 데이터는 새 데모 구성으로 재시작
+    const v1 = baseState(NOW);
+    v1.version = 1;
+    const v1Ctx = makeContext({ now: NOW, state: v1 });
+    const warmed = await v1Ctx.api.getStudent('st_offline');
+    eq('version 1 → 새 데모로 초기화', [!!warmed, warmed.classes], [true, ['handstand', 'functional']]);
   }
 
   /* ── 결과 ─────────────────────────────────────────────── */

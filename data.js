@@ -79,7 +79,7 @@ const CLASSES = [
     note: '온라인 · 일정/신청 문의',
   },
   {
-    id: 'online-coaching',
+    id: 'coaching',
     name: '핸드스탠드 온라인 코칭',
     en: 'Handstand Online Coaching',
     icon: 'online',
@@ -92,6 +92,39 @@ const CLASSES = [
     note: '온라인 · 인스타 DM 신청',
   },
 ];
+
+/* ── 수강 수업(접근 권한) ─────────────────────────────────
+   수강생은 4가지 수업 중 열린 수업만 볼 수 있습니다.
+   - 오프라인: handstand(핸드스탠드 무브먼트) · functional(펑셔널 요가)
+   - 온라인: morning(모닝 모빌리티) · coaching(핸드스탠드 온라인 코칭)
+   수업 시퀀스(#sequence)는 핸드스탠드 수업을 듣는 수강생에게만 열립니다. */
+const CLASS_ORDER = ['handstand', 'functional', 'morning', 'coaching'];
+const OFFLINE_CLASS_IDS = ['handstand', 'functional'];
+const ONLINE_CLASS_IDS = ['morning', 'coaching']; /* ONLINE 프로그램 키와 같습니다 */
+
+function normalizeClasses(list) {
+  const given = Array.isArray(list) ? list : [];
+  return CLASS_ORDER.filter((id) => given.indexOf(id) !== -1);
+}
+
+function offlineOf(classes) {
+  return OFFLINE_CLASS_IDS.filter((id) => (classes || []).indexOf(id) !== -1);
+}
+
+function onlineOf(classes) {
+  return ONLINE_CLASS_IDS.filter((id) => (classes || []).indexOf(id) !== -1);
+}
+
+/* 수강생이 볼 수 있는 영역 */
+function accessFor(student) {
+  const classes = normalizeClasses(student && student.classes);
+  return {
+    classes,
+    offline: offlineOf(classes),
+    online: onlineOf(classes),
+    sequence: classes.indexOf('handstand') !== -1,
+  };
+}
 
 /* ── 수업 시퀀스 (실제 수업 순서) ─────────────────────────── */
 /* video.youtubeId 에 유튜브 영상 ID(예: 'dQw4w9WgXcQ')를 넣으면
@@ -290,8 +323,8 @@ const ONLINE = {
       { id: 'mm8', name: '고관절 내회전 · 외회전', dose: '', cue: '', video: { youtubeId: '', url: '' } },
     ],
   },
-  'online-coaching': {
-    id: 'online-coaching',
+  coaching: {
+    id: 'coaching',
     name: '핸드스탠드 온라인 코칭',
     en: 'Handstand Online Coaching',
     sub: '영상을 보고 따라 한 뒤, 그날의 감각을 체크해 두세요',
@@ -375,29 +408,34 @@ const api = (() => {
   function fresh() {
     const now = new Date();
     const iso = (d) => d.toISOString();
+    const wk = weekKeyOf(now.getTime());
+    const wk1 = weekKeyOf(addDays(now, -7).getTime());
+    const wk2 = weekKeyOf(addDays(now, -14).getTime());
     const students = [
-      // 아직 수강권이 없는 신규 수강생
-      { id: 'st_new', name: '김하늘', code: 'MJ-1024', pass: null, createdAt: iso(addDays(now, -1)) },
-      // 4회권 보유 (1회 예약 → 3회 남음)
+      /* 아직 열린 수업도 수강권도 없는 신규 수강생 */
+      { id: 'st_new', name: '김하늘', code: 'MJ-1024', pass: null, classes: [], createdAt: iso(addDays(now, -1)) },
+      /* 오프라인 4회권 · 핸드스탠드 + 펑셔널 요가 (온라인 없음) */
       {
-        id: 'st_pass4', name: '이서연', code: 'MJ-2048',
-        pass: { type: 4, total: 4, used: 1, issuedAt: iso(addDays(now, -10)), expiresAt: iso(addDays(now, 50)) },
+        id: 'st_offline', name: '이서연', code: 'MJ-2048', classes: ['handstand', 'functional'],
+        pass: { type: 4, total: 4, used: 2, issuedAt: iso(addDays(now, -10)), expiresAt: iso(addDays(now, 50)) },
         createdAt: iso(addDays(now, -30)),
       },
-      // 8회권을 모두 쓰고 만료된 수강생
+      /* 모닝 모빌리티만 열린 온라인 수강생 */
+      { id: 'st_morning', name: '박지우', code: 'MJ-0812', pass: null, classes: ['morning'], createdAt: iso(addDays(now, -12)) },
+      /* 온라인 코칭 + 핸드스탠드 (8회권) */
       {
-        id: 'st_exhausted', name: '박지우', code: 'MJ-0812',
-        pass: { type: 8, total: 8, used: 8, issuedAt: iso(addDays(now, -75)), expiresAt: iso(addDays(now, -5)) },
-        createdAt: iso(addDays(now, -90)),
-      },
-      // 8회권 보유 (2회 예약 → 5회 남음)
-      {
-        id: 'st_pass8', name: '정민아', code: 'MJ-1125',
+        id: 'st_coaching', name: '정민아', code: 'MJ-1125', classes: ['coaching', 'handstand'],
         pass: { type: 8, total: 8, used: 3, issuedAt: iso(addDays(now, -14)), expiresAt: iso(addDays(now, 76)) },
         createdAt: iso(addDays(now, -20)),
       },
+      /* 펑셔널 요가만 · 수강권 만료 (이름+코드 로그인으로 확인) */
+      {
+        id: 'st_expired', name: '최유진', code: 'MJ-0917', classes: ['functional'],
+        pass: { type: 4, total: 4, used: 4, issuedAt: iso(addDays(now, -100)), expiresAt: iso(addDays(now, -5)) },
+        createdAt: iso(addDays(now, -110)),
+      },
     ];
-    const state = { version: 1, students, requests: [], bookings: [] };
+    const state = { version: 2, students, requests: [], bookings: [] };
 
     const sessions = buildSessions(now, CONFIG.bookingWindowDays);
     const first = (id) => sessions.find((s) => s.classId === id) || null;
@@ -411,15 +449,33 @@ const api = (() => {
       });
     };
     const hs = sessions.filter((s) => s.classId === 'handstand');
-    seed('st_pass4', hs[0]);
-    seed('st_pass8', hs[1] || hs[0]);
-    seed('st_pass8', first('functional'));
+    seed('st_offline', hs[0]);
+    seed('st_offline', first('functional'));
+    seed('st_coaching', hs[1] || hs[0]);
 
-    /* 온라인 클래스 샘플 기록 (이번 주) */
-    const wk = weekKeyOf(now.getTime());
+    /* 온라인 클래스 샘플 기록 — 이서연(모닝) · 정민아(코칭) */
     state.online = {
-      st_pass4: {
+      st_offline: {
         morning: {
+          [wk2]: {
+            checks: {
+              mm1: [0, 1, 0, 1, 0, 0, 0],
+              mm3: [0, 1, 0, 1, 0, 0, 0],
+              mm5: [0, 0, 0, 1, 0, 0, 0],
+            },
+            note: '첫 주는 어깨가 거의 안 돌아갔는데, 영상 보고 천천히 따라 하니 조금씩 범위가 넓어져요. 무리하지 않고 4회만 채웠습니다.',
+            updatedAt: iso(addDays(now, -15)),
+          },
+          [wk1]: {
+            checks: {
+              mm1: [1, 0, 1, 0, 1, 0, 0],
+              mm2: [1, 0, 0, 0, 1, 0, 0],
+              mm3: [1, 1, 0, 1, 0, 0, 0],
+              mm6: [0, 0, 1, 0, 1, 0, 0],
+            },
+            note: '몸통 회전이 오른쪽으로 갈 때 갈비뼈가 걸리는 느낌. 왼쪽은 부드러웠어요.\n아침에 하면 하루 종일 허리가 편합니다.',
+            updatedAt: iso(addDays(now, -8)),
+          },
           [wk]: {
             checks: {
               mm1: [1, 0, 1, 0, 1, 0, 0],
@@ -433,8 +489,17 @@ const api = (() => {
           },
         },
       },
-      st_pass8: {
-        'online-coaching': {
+      st_coaching: {
+        coaching: {
+          [wk1]: {
+            checks: {
+              b2: [1, 0, 1, 0, 1, 0, 0],
+              b3: [1, 0, 1, 0, 0, 0, 0],
+              b6: [0, 0, 1, 0, 1, 0, 0],
+            },
+            note: '손목 들기 50번을 먼저 하니 벽 아래 홀드가 훨씬 편해졌어요. walking to wall은 3걸음까지 갔습니다.',
+            updatedAt: iso(addDays(now, -7)),
+          },
           [wk]: {
             checks: {
               b2: [1, 1, 0, 1, 0, 0, 0],
@@ -506,17 +571,56 @@ const api = (() => {
     } catch (err) {
       state = null;
     }
-    if (!state || state.version !== 1) {
+    /* 수업별 접근 제어(version 2) 이전 데이터는 새 데모 구성으로 다시 시작합니다 */
+    if (!state || state.version !== 2) {
       state = fresh();
       save();
+      return state;
     }
     /* 온라인 체크 기능 이전에 저장된 데이터 보정 */
     if (!state.online) {
       state.online = {};
       save();
     }
+    migrateClasses();
     prune();
     return state;
+  }
+
+  /* 수업별 접근 제어 이전 데이터 보정
+     - 예전 프로그램 키 online-coaching → coaching
+     - classes 속성이 없으면 수강권(오프라인)과 온라인 기록으로 추정 */
+  function migrateClasses() {
+    let changed = false;
+
+    if (state.online) {
+      Object.keys(state.online).forEach((studentId) => {
+        const bucket = state.online[studentId];
+        if (!bucket || typeof bucket !== 'object') return;
+        if (bucket['online-coaching']) {
+          if (!bucket.coaching) bucket.coaching = bucket['online-coaching'];
+          delete bucket['online-coaching'];
+          changed = true;
+        }
+      });
+    }
+
+    (state.students || []).forEach((student) => {
+      if (Array.isArray(student.classes)) {
+        const normalized = normalizeClasses(student.classes);
+        if (normalized.length !== student.classes.length) {
+          student.classes = normalized;
+          changed = true;
+        }
+        return;
+      }
+      const programs = Object.keys((state.online && state.online[student.id]) || {});
+      const guessed = (student.pass ? OFFLINE_CLASS_IDS.slice() : []).concat(programs);
+      student.classes = normalizeClasses(guessed);
+      changed = true;
+    });
+
+    if (changed) save();
   }
 
   /* 지난 예약은 목록에서 정리 (수강권 used 값은 그대로 둡니다) */
@@ -544,6 +648,7 @@ const api = (() => {
     const s = load();
     const student = s.students.find((x) => x.id === id);
     if (!student) return null;
+    const access = accessFor(student);
     const { status, pending } = statusOf(student);
     const sessions = new Map(buildSessions(new Date(), 30).map((x) => [x.id, x]));
     const bookings = s.bookings
@@ -581,6 +686,8 @@ const api = (() => {
       pending: pending ? { id: pending.id, type: pending.type, createdAt: pending.createdAt } : null,
       pass,
       bookings,
+      classes: access.classes,
+      access,
     };
   }
 
@@ -624,6 +731,9 @@ const api = (() => {
 
       const session = sessionFor(sessionId);
       if (!session) throw new Error('예약할 수 없는 시간이에요.');
+      if (v.classes.indexOf(session.classId) === -1) {
+        throw new Error('수강 중인 수업만 예약할 수 있어요.');
+      }
       if (session.start <= Date.now()) throw new Error('이미 시작한 수업이에요.');
 
       if (s.bookings.some((b) => b.studentId === studentId && b.sessionId === sessionId)) {
@@ -693,7 +803,8 @@ const api = (() => {
     },
 
     /* ── 신규 등록 / 재등록 요청 ── */
-    async request(studentId, type) {
+    /* classes: 수강을 원하는 수업(선택). 강사가 승인할 때 그대로 열어 줄 수 있습니다. */
+    async request(studentId, type, classes) {
       const s = load();
       const student = s.students.find((x) => x.id === studentId);
       if (!student) throw new Error('수강생 정보를 찾을 수 없어요.');
@@ -704,6 +815,7 @@ const api = (() => {
         id: uid('rq'),
         studentId,
         type, // 'register' | 'renewal'
+        classes: normalizeClasses(Array.isArray(classes) ? classes : student.classes),
         status: 'pending',
         createdAt: new Date().toISOString(),
       };
@@ -713,12 +825,20 @@ const api = (() => {
     },
 
     /* ── 강사: 수강권 부여 / 요청 승인 ── */
-    async grantPass(studentId, type) {
+    /* classes 를 주면 그 수업으로 접근 권한도 함께 바뀝니다 */
+    async grantPass(studentId, type, classes) {
       const s = load();
       const student = s.students.find((x) => x.id === studentId);
       if (!student) throw new Error('수강생을 찾을 수 없어요.');
       const t = CONFIG.passTypes[type];
       if (!t) throw new Error('수강권 종류를 선택해 주세요.');
+      if (Array.isArray(classes)) {
+        const next = normalizeClasses(classes);
+        /* 새로 연 수업은 지키고, 수강권 결에 맞지 않는 수업은 정리 */
+        student.classes = next;
+      } else if (!Array.isArray(student.classes)) {
+        student.classes = OFFLINE_CLASS_IDS.slice();
+      }
 
       /* 이미 잡혀 있는 예약은 새 수강권에서도 소진으로 계산 */
       const upcoming = s.bookings.filter((b) => {
@@ -745,11 +865,53 @@ const api = (() => {
       return viewStudent(studentId);
     },
 
-    async approveRequest(requestId, type) {
+    async approveRequest(requestId, type, classes) {
       const s = load();
       const req = s.requests.find((r) => r.id === requestId);
       if (!req) throw new Error('요청을 찾을 수 없어요.');
-      return this.grantPass(req.studentId, type);
+      const next = Array.isArray(classes) ? classes : req.classes;
+      return this.grantPass(req.studentId, type, next);
+    },
+
+    /* ── 강사: 회원 등록 · 수업 접근 관리 ── */
+    async adminRegister({ name, code, classes, passType } = {}) {
+      const s = load();
+      const n = String(name || '').trim();
+      const c = String(code || '').trim().toUpperCase();
+      if (n.length < 1) throw new Error('이름을 입력해 주세요.');
+      if (!/^[A-Z0-9-]{4,12}$/.test(c)) throw new Error('수강 코드는 영문·숫자 4~12자로 입력해 주세요.');
+      if (s.students.some((x) => String(x.code).toUpperCase() === c)) {
+        throw new Error('이미 사용 중인 수강 코드예요.');
+      }
+      const student = {
+        id: uid('st'),
+        name: n,
+        code: c,
+        classes: normalizeClasses(classes),
+        pass: null,
+        createdAt: new Date().toISOString(),
+      };
+      s.students.push(student);
+      save();
+      if (passType) return this.grantPass(student.id, passType, student.classes);
+      return viewStudent(student.id);
+    },
+
+    async adminSetClasses(studentId, classes) {
+      const s = load();
+      const student = s.students.find((x) => x.id === studentId);
+      if (!student) throw new Error('수강생을 찾을 수 없어요.');
+      student.classes = normalizeClasses(classes);
+      save();
+      return viewStudent(studentId);
+    },
+
+    /* 수강생이 볼 수 있는 범위 (앱의 섹션 표시 판단용) */
+    async accessOf(studentId) {
+      const s = load();
+      const student = s.students.find((x) => x.id === studentId);
+      if (!student) return null;
+      return accessFor(student);
     },
 
     /* ── 온라인 클래스: 주간 체크 & 노트 ── */
@@ -768,6 +930,12 @@ const api = (() => {
       if (!studentId) throw new Error('로그인한 수강생만 체크할 수 있어요.');
       const program = ONLINE[programId];
       if (!program) throw new Error('온라인 클래스를 찾을 수 없어요.');
+      const s = load();
+      const student = s.students.find((x) => x.id === studentId);
+      if (!student) throw new Error('수강생 정보를 찾을 수 없어요.');
+      if (accessFor(student).online.indexOf(programId) === -1) {
+        throw new Error('수강 중인 온라인 클래스만 기록할 수 있어요.');
+      }
       if (!weekKeyValue) throw new Error('주차를 다시 선택해 주세요.');
       const day = Number(dayIndex);
       if (!(day >= 0 && day <= 6)) throw new Error('요일을 다시 확인해 주세요.');
@@ -775,7 +943,6 @@ const api = (() => {
         throw new Error('동작을 찾을 수 없어요.');
       }
 
-      const s = load();
       const rec = ensureOnlineRecord(s, studentId, programId, weekKeyValue);
       if (!rec.checks[movementId]) rec.checks[movementId] = [0, 0, 0, 0, 0, 0, 0];
       rec.checks[movementId][day] = on ? 1 : 0;
@@ -789,6 +956,11 @@ const api = (() => {
       if (!ONLINE[programId]) throw new Error('온라인 클래스를 찾을 수 없어요.');
       if (!weekKeyValue) throw new Error('주차를 다시 선택해 주세요.');
       const s = load();
+      const student = s.students.find((x) => x.id === studentId);
+      if (!student) throw new Error('수강생 정보를 찾을 수 없어요.');
+      if (accessFor(student).online.indexOf(programId) === -1) {
+        throw new Error('수강 중인 온라인 클래스만 기록할 수 있어요.');
+      }
       const rec = ensureOnlineRecord(s, studentId, programId, weekKeyValue);
       rec.note = String(text == null ? '' : text).slice(0, 2000);
       rec.updatedAt = new Date().toISOString();
@@ -803,7 +975,7 @@ const api = (() => {
       const sessions = buildSessions(new Date(), CONFIG.bookingWindowDays);
       const students = s.students.map((st) => {
         const v = viewStudent(st.id);
-        return { id: v.id, name: v.name, code: v.code, status: v.status, pass: v.pass };
+        return { id: v.id, name: v.name, code: v.code, status: v.status, pass: v.pass, classes: v.classes };
       });
       const nameOf = new Map(students.map((st) => [st.id, st]));
 
@@ -841,6 +1013,10 @@ const api = (() => {
       return {
         now,
         students,
+        roster: CLASS_ORDER.map((id) => {
+          const cls = CLASSES.find((c) => c.id === id) || { id, name: id, mode: 'online' };
+          return { id, name: cls.name, mode: cls.mode };
+        }),
         online: onlineSummary(s, weekKeyOf(now)),
         onlineWeekKey: weekKeyOf(now),
         pending: s.requests
@@ -848,7 +1024,13 @@ const api = (() => {
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
           .map((r) => {
             const st = s.students.find((x) => x.id === r.studentId);
-            return { id: r.id, type: r.type, createdAt: r.createdAt, studentName: st ? st.name : '—' };
+            return {
+              id: r.id,
+              type: r.type,
+              createdAt: r.createdAt,
+              studentName: st ? st.name : '—',
+              classes: normalizeClasses(r.classes || (st && st.classes)),
+            };
           }),
         days: Array.from(byDay.entries()).map(([key, list]) => ({
           key,
