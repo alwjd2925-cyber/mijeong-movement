@@ -99,7 +99,7 @@ function baseStudents(now) {
 }
 
 function baseState(now, bookings) {
-  return { version: 2, students: baseStudents(now), requests: [], bookings: bookings || [] };
+  return { version: 3, students: baseStudents(now), requests: [], bookings: bookings || [] };
 }
 
 /* 수업 id 찾기: 로컬 시각 기준 */
@@ -426,9 +426,9 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     const { api } = makeContext({ now: NOW });
     const demo = [
       ['st_new', []],
-      ['st_offline', ['handstand', 'functional']],
+      ['st_offline', ['handstand', 'functional', 'morning']],
       ['st_morning', ['morning']],
-      ['st_coaching', ['handstand', 'coaching']],
+      ['st_coaching', ['handstand', 'morning', 'coaching']],
       ['st_expired', ['functional']],
     ];
     for (const [id, classes] of demo) {
@@ -455,7 +455,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     v1.version = 1;
     const v1Ctx = makeContext({ now: NOW, state: v1 });
     const warmed = await v1Ctx.api.getStudent('st_offline');
-    eq('version 1 → 새 데모로 초기화', [!!warmed, warmed.classes], [true, ['handstand', 'functional']]);
+    eq('version 1 → 새 데모로 초기화', [!!warmed, warmed.classes], [true, ['handstand', 'functional', 'morning']]);
   }
 
   /* ── 결과 ─────────────────────────────────────────────── */

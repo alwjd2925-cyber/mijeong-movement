@@ -414,17 +414,17 @@ const api = (() => {
     const students = [
       /* 아직 열린 수업도 수강권도 없는 신규 수강생 */
       { id: 'st_new', name: '김하늘', code: 'MJ-1024', pass: null, classes: [], createdAt: iso(addDays(now, -1)) },
-      /* 오프라인 4회권 · 핸드스탠드 + 펑셔널 요가 (온라인 없음) */
+      /* 오프라인 4회권 · 핸드스탠드 + 펑셔널 + 모닝 모빌리티 */
       {
-        id: 'st_offline', name: '이서연', code: 'MJ-2048', classes: ['handstand', 'functional'],
+        id: 'st_offline', name: '이서연', code: 'MJ-2048', classes: ['handstand', 'functional', 'morning'],
         pass: { type: 4, total: 4, used: 2, issuedAt: iso(addDays(now, -10)), expiresAt: iso(addDays(now, 50)) },
         createdAt: iso(addDays(now, -30)),
       },
       /* 모닝 모빌리티만 열린 온라인 수강생 */
       { id: 'st_morning', name: '박지우', code: 'MJ-0812', pass: null, classes: ['morning'], createdAt: iso(addDays(now, -12)) },
-      /* 온라인 코칭 + 핸드스탠드 (8회권) */
+      /* 온라인 코칭 + 모닝 + 핸드스탠드 (8회권) — 온라인 탭 두 개 */
       {
-        id: 'st_coaching', name: '정민아', code: 'MJ-1125', classes: ['coaching', 'handstand'],
+        id: 'st_coaching', name: '정민아', code: 'MJ-1125', classes: ['handstand', 'morning', 'coaching'],
         pass: { type: 8, total: 8, used: 3, issuedAt: iso(addDays(now, -14)), expiresAt: iso(addDays(now, 76)) },
         createdAt: iso(addDays(now, -20)),
       },
@@ -435,7 +435,7 @@ const api = (() => {
         createdAt: iso(addDays(now, -110)),
       },
     ];
-    const state = { version: 2, students, requests: [], bookings: [] };
+    const state = { version: 3, students, requests: [], bookings: [] };
 
     const sessions = buildSessions(now, CONFIG.bookingWindowDays);
     const first = (id) => sessions.find((s) => s.classId === id) || null;
@@ -571,8 +571,8 @@ const api = (() => {
     } catch (err) {
       state = null;
     }
-    /* 수업별 접근 제어(version 2) 이전 데이터는 새 데모 구성으로 다시 시작합니다 */
-    if (!state || state.version !== 2) {
+    /* 수업별 접근 제어 이전 데이터는 새 데모 구성으로 다시 시작합니다 (version 3) */
+    if (!state || state.version !== 3) {
       state = fresh();
       save();
       return state;
