@@ -65,9 +65,9 @@
   /* 데모 수강생 — 4가지 수업을 골고루 확인할 수 있게 */
   const DEMO_STUDENTS = [
     { id: 'st_new', label: '신규 수강생', hint: '김하늘 · 열린 수업 없음' },
-    { id: 'st_offline', label: '오프라인 4회권', hint: '이서연 · 핸드스탠드 + 펑셔널' },
-    { id: 'st_morning', label: '모닝 모빌리티', hint: '박지우 · 온라인 모닝' },
-    { id: 'st_coaching', label: '온라인 코칭', hint: '정민아 · 코칭 + 핸드스탠드' },
+    { id: 'st_offline', label: '오프라인 4회권', hint: '이서연 · 핸드스탠드 + 펑셔널 + 모닝' },
+    { id: 'st_morning', label: '모닝 모빌리티', hint: '박지우 · 모닝만' },
+    { id: 'st_coaching', label: '온라인 코칭', hint: '정민아 · 코칭 + 모닝 + 핸드스탠드' },
   ];
 
   function classMeta(id) {
