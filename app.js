@@ -49,6 +49,8 @@
     resetArmed: false,
     adminStudent: '',   // 대리 예약 폼에서 마지막으로 고른 수강생
     adminSession: '',   // 대리 예약 폼에서 마지막으로 고른 수업
+    onlineProgram: 'morning', // 온라인 클래스 탭
+    onlineWeek: 0,      // 0 = 이번 주
   };
 
   function saveCurrent() {
@@ -335,6 +337,8 @@
       ${identityHTML(student)}
       ${statusBlockHTML(student)}
       ${scheduleHTML(student, sessions)}`;
+
+    await renderOnline();
   }
 
   async function act(fn, successMessage) {
@@ -417,6 +421,244 @@
     }
   }
 
+  /* ── 온라인 클래스: 주간 체크 & 노트 ──────────────────── */
+  const DAYS = [
+    { ko: '월', en: 'Mon' },
+    { ko: '화', en: 'Tue' },
+    { ko: '수', en: 'Wed' },
+    { ko: '목', en: 'Thu' },
+    { ko: '금', en: 'Fri' },
+    { ko: '토', en: 'Sat' },
+    { ko: '일', en: 'Sun' },
+  ];
+  const ONLINE_WEEKS = [-3, -2, -1, 0, 1];
+
+  function weekStart(offsetWeeks) {
+    const now = new Date();
+    const back = (now.getDay() + 6) % 7; // 월=0
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate() - back + offsetWeeks * 7);
+  }
+
+  function weekLabel(offsetWeeks) {
+    const start = weekStart(offsetWeeks);
+    const end = new Date(start.getTime() + 6 * 86400000);
+    const base = offsetWeeks === 0 ? '이번 주'
+      : offsetWeeks === -1 ? '지난주'
+        : offsetWeeks === 1 ? '다음 주'
+          : offsetWeeks < 0 ? `${-offsetWeeks}주 전` : `${offsetWeeks}주 후`;
+    return `${base} · ${start.getMonth() + 1}.${start.getDate()}–${end.getMonth() + 1}.${end.getDate()}`;
+  }
+
+  function onlineCounts(program, record) {
+    let checked = 0;
+    let count = 0;
+    program.movements.forEach((m) => {
+      const row = (record && record.checks && record.checks[m.id]) || [];
+      const hits = row.filter((v) => v === 1).length;
+      count += hits;
+      if (hits > 0) checked += 1;
+    });
+    return { checked, count, total: program.movements.length };
+  }
+
+  function trackTableHTML(program, record, locked) {
+    const checks = (record && record.checks) || {};
+    return `
+      <div class="track-table-wrap">
+        <table class="track-table">
+          <thead>
+            <tr>
+              <th class="th-ex">Exercise</th>
+              ${DAYS.map((d) => `<th><span class="d-en">${d.en}</span><span class="d-ko">${d.ko}</span></th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${program.movements.map((m) => {
+              const row = checks[m.id] || [];
+              return `
+              <tr>
+                <th class="td-ex">
+                  <span class="ex-name">${esc(m.name)}</span>
+                  <button class="ex-video" type="button" data-video="${esc(m.id)}">영상 보기</button>
+                </th>
+                ${DAYS.map((d, i) => {
+                  const on = row[i] === 1;
+                  return `<td><button class="tick${on ? ' is-on' : ''}" type="button"
+                    data-tick="${esc(m.id)}:${i}"
+                    aria-pressed="${on ? 'true' : 'false'}"
+                    aria-label="${esc(m.name)} ${d.ko}요일 체크"${locked ? ' disabled' : ''}>${on ? '✓' : ''}</button></td>`;
+                }).join('')}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function noteSavedText(record) {
+    if (!record || !record.updatedAt) return '아직 저장된 노트가 없어요';
+    const d = new Date(record.updatedAt);
+    return `마지막 저장 ${shortDate(d)} ${timeHM(d)}`;
+  }
+
+  function trackNoteHTML(program, record, locked) {
+    const note = (record && record.note) || '';
+    return `
+      <div class="track-note">
+        <p class="tn-label">${esc(program.noteLabel)}</p>
+        <p class="tn-hint">${esc(program.noteHint)}</p>
+        <textarea id="onlineNote" rows="8" placeholder="${esc(program.noteHint)}"${locked ? ' disabled' : ''}>${esc(note)}</textarea>
+        <div class="tn-foot">
+          <span class="tn-status" id="noteStatus">${locked ? '로그인 후 저장됩니다' : esc(noteSavedText(record))}</span>
+          <button class="btn-mini btn-mini--butter" type="button" data-save-note${locked ? ' disabled' : ''}>노트 저장</button>
+        </div>
+      </div>`;
+  }
+
+  async function renderOnline() {
+    const panel = $('#trackPanel');
+    if (!panel) return;
+    const programs = Object.values(ONLINE);
+    const program = ONLINE[UI.onlineProgram] || programs[0];
+    UI.onlineProgram = program.id;
+
+    const tabs = programs.map((p) => `
+      <button class="ot-tab${p.id === program.id ? ' is-active' : ''}" type="button" role="tab"
+        aria-selected="${p.id === program.id ? 'true' : 'false'}" data-program="${esc(p.id)}">
+        <span class="mode is-online">온라인</span>${esc(p.name)}
+      </button>`).join('');
+
+    const head = `
+      <div class="track-head">
+        <div class="ot-tabs" role="tablist" aria-label="온라인 클래스">${tabs}</div>
+      </div>
+      <p class="track-sub">${esc(program.sub)}</p>`;
+
+    if (!UI.studentId) {
+      panel.innerHTML = `
+        ${head}
+        <div class="track-lock">
+          <p class="track-lock-title">로그인하면 체크와 노트가 저장됩니다</p>
+          <p class="track-lock-sub">수강생 이름과 코드로 로그인하면 주차별 체크 기록과 ${esc(program.noteLabel)}를 남길 수 있어요.</p>
+          <button class="btn btn-line btn--sm" type="button" data-goto-login>수강생 로그인</button>
+        </div>
+        ${trackTableHTML(program, null, true)}`;
+      return;
+    }
+
+    const student = await api.getStudent(UI.studentId);
+    if (!student) {
+      UI.studentId = null;
+      saveCurrent();
+      await renderOnline();
+      return;
+    }
+
+    const records = await api.getOnline(UI.studentId);
+    const key = localKey(weekStart(UI.onlineWeek));
+    const record = ((records[program.id] || {})[key]) || null;
+    const { checked, count, total } = onlineCounts(program, record);
+    const weekOptions = ONLINE_WEEKS.map((w) =>
+      `<option value="${w}"${w === UI.onlineWeek ? ' selected' : ''}>${esc(weekLabel(w))}</option>`).join('');
+
+    panel.innerHTML = `
+      <div class="track-head">
+        <div class="ot-tabs" role="tablist" aria-label="온라인 클래스">${tabs}</div>
+        <div class="ot-week">
+          <select class="select" id="onlineWeek" aria-label="주차 선택">${weekOptions}</select>
+        </div>
+      </div>
+      <p class="track-sub">${esc(program.sub)}</p>
+      <p class="track-sum"><b>${checked}</b> / ${total} 동작 · 이 주 ${count}회 체크 · <span class="track-who">${esc(student.name)}</span></p>
+      <div class="track-body">
+        ${trackTableHTML(program, record, false)}
+        ${trackNoteHTML(program, record, false)}
+      </div>`;
+  }
+
+  function refreshTrackSummary(record) {
+    const sum = $('.track-sum');
+    const program = ONLINE[UI.onlineProgram];
+    if (!sum || !program) return;
+    const { checked, count, total } = onlineCounts(program, record);
+    const who = sum.querySelector('.track-who');
+    sum.innerHTML = `<b>${checked}</b> / ${total} 동작 · 이 주 ${count}회 체크 · <span class="track-who">${who ? esc(who.textContent) : ''}</span>`;
+  }
+
+  async function saveOnlineNote(silent) {
+    const area = $('#onlineNote');
+    if (!area || !UI.studentId) return null;
+    const key = localKey(weekStart(UI.onlineWeek));
+    try {
+      const rec = await api.setOnlineNote(UI.studentId, UI.onlineProgram, key, area.value);
+      const status = $('#noteStatus');
+      if (status) status.textContent = `저장됨 · ${timeHM(new Date())}`;
+      if (!silent) toast('노트를 저장했어요.');
+      return rec;
+    } catch (err) {
+      toast(err.message || '노트를 저장하지 못했어요.', true);
+      return null;
+    }
+  }
+
+  function bindOnline() {
+    const panel = $('#trackPanel');
+    if (!panel) return;
+
+    panel.addEventListener('click', async (event) => {
+      const tab = event.target.closest('[data-program]');
+      if (tab) {
+        UI.onlineProgram = tab.dataset.program;
+        await renderOnline();
+        return;
+      }
+
+      const goto = event.target.closest('[data-goto-login]');
+      if (goto) {
+        const section = $('#booking');
+        if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const nameInput = $('#loginForm input[name="name"]');
+        if (nameInput) nameInput.focus({ preventScroll: true });
+        return;
+      }
+
+      const tick = event.target.closest('[data-tick]');
+      if (tick && UI.studentId) {
+        const [movementId, dayStr] = tick.dataset.tick.split(':');
+        const on = !tick.classList.contains('is-on');
+        tick.disabled = true;
+        try {
+          const rec = await api.setOnlineCheck(
+            UI.studentId, UI.onlineProgram,
+            localKey(weekStart(UI.onlineWeek)), movementId, Number(dayStr), on,
+          );
+          tick.classList.toggle('is-on', on);
+          tick.setAttribute('aria-pressed', on ? 'true' : 'false');
+          tick.textContent = on ? '✓' : '';
+          refreshTrackSummary(rec);
+        } catch (err) {
+          toast(err.message || '체크를 저장하지 못했어요.', true);
+        }
+        tick.disabled = false;
+        return;
+      }
+
+      if (event.target.closest('[data-save-note]')) {
+        await saveOnlineNote(false);
+      }
+    });
+
+    panel.addEventListener('change', async (event) => {
+      if (event.target.id !== 'onlineWeek') return;
+      UI.onlineWeek = Number(event.target.value);
+      await renderOnline();
+    });
+
+    panel.addEventListener('focusout', async (event) => {
+      if (event.target.id === 'onlineNote' && UI.studentId) await saveOnlineNote(true);
+    });
+  }
+
   /* ── sequence ──────────────────────────────────────────── */
   function stepHTML(item, index, group) {
     return `
@@ -464,6 +706,12 @@
   WARMUP.forEach((item) => VIDEO_INDEX.set(item.id, { item, group: 'warm-up' }));
   Object.keys(SEQUENCES).forEach((level) => {
     SEQUENCES[level].forEach((item) => VIDEO_INDEX.set(item.id, { item, group: level }));
+  });
+  /* 온라인 클래스 동작도 같은 영상 모달을 씁니다 */
+  Object.values(ONLINE).forEach((program) => {
+    program.movements.forEach((item) => {
+      if (!VIDEO_INDEX.has(item.id)) VIDEO_INDEX.set(item.id, { item, group: program.name });
+    });
   });
 
   function youtubeId(video) {
@@ -640,6 +888,20 @@
       <p class="grant-hint">고른 수강생의 잔여 횟수에서 1회 차감되고, 수강생 화면에 바로 반영됩니다. 만료·소진·중복·같은 시간 예약은 그대로 막힙니다.</p>`;
   }
 
+  function adminOnlineHTML(rows) {
+    if (!rows || !rows.length) return '<p class="admin-empty">이번 주 온라인 체크 기록이 없어요.</p>';
+    return rows.map((row) => `
+      <div class="on-row">
+        <div class="on-head"><b>${esc(row.name)}</b></div>
+        ${row.items.map((it) => `
+          <div class="on-item">
+            <span class="on-prog">${esc(it.programName)}</span>
+            <span class="on-count">${it.checked}/${it.total} 동작 · ${it.count}회</span>
+            <p class="on-note${it.note ? '' : ' is-empty'}">${it.note ? esc(it.note) : '노트 없음'}</p>
+          </div>`).join('')}
+      </div>`).join('');
+  }
+
   let ADMIN_DATA = null;
 
   async function renderAdmin() {
@@ -691,6 +953,11 @@
           <button class="btn-mini btn-mini--butter" type="button" data-grant>부여</button>
         </div>
         <p class="grant-hint">부여하면 잔여 횟수가 새로 시작됩니다. 이미 사용 중인 수강권이 있으면 새 수강권으로 교체되고, 남은 횟수는 넘어가지 않아요.</p>
+      </section>
+
+      <section class="admin-block">
+        <div class="admin-h"><h4>온라인 체크 / online</h4><span>이번 주</span></div>
+        ${adminOnlineHTML(data.online)}
       </section>
 
       <section class="admin-block">
@@ -889,6 +1156,7 @@
     renderClasses();
     renderSequence();
     bindBooking();
+    bindOnline();
     bindAdmin();
     bindModals();
     bindScrollSpy();

@@ -280,6 +280,73 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     eq('예약 목록 비움', cancelled.bookings.length, 0);
   }
 
+  /* ────────────────────────────────────────────────────────
+     7. 온라인 클래스 주간 체크 · 노트
+     ──────────────────────────────────────────────────────── */
+  console.log('\n[7] 온라인 체크 · 노트');
+  {
+    const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
+    const wk = api.weekKey();
+
+    eq('처음에는 기록 없음', await api.getOnline('st_a'), {});
+    eq('주 시작일 키(월요일)', wk, '2026-11-23');
+
+    const rec = await api.setOnlineCheck('st_a', 'morning', wk, 'mm1', 0, true);
+    eq('체크 저장', rec.checks.mm1[0], 1);
+    await api.setOnlineCheck('st_a', 'morning', wk, 'mm1', 2, true);
+    const stored = await api.getOnline('st_a');
+    eq('같은 동작 다른 요일 누적', stored.morning[wk].checks.mm1, [1, 0, 1, 0, 0, 0, 0]);
+
+    await api.setOnlineCheck('st_a', 'morning', wk, 'mm1', 2, false);
+    eq('다시 누르면 해제', (await api.getOnline('st_a')).morning[wk].checks.mm1[2], 0);
+
+    await api.setOnlineNote('st_a', 'morning', wk, '  오른쪽 어깨가 걸려요  ');
+    eq('노트 저장', (await api.getOnline('st_a')).morning[wk].note, '  오른쪽 어깨가 걸려요  ');
+    eq('저장 시각 기록', typeof read().online.st_a.morning[wk].updatedAt, 'string');
+
+    await throws('학생 id 없으면 거부', () => api.setOnlineCheck('', 'morning', wk, 'mm1', 0, true), /로그인/);
+    await throws('없는 프로그램 거부', () => api.setOnlineCheck('st_a', 'nope', wk, 'mm1', 0, true), /온라인 클래스/);
+    await throws('없는 동작 거부', () => api.setOnlineCheck('st_a', 'morning', wk, 'zzz', 0, true), /동작/);
+    await throws('잘못된 요일 거부', () => api.setOnlineCheck('st_a', 'morning', wk, 'mm1', 7, true), /요일/);
+    await throws('비로그인 노트 거부', () => api.setOnlineNote('', 'morning', wk, 'x'), /로그인/);
+
+    // 프로그램을 나눠서 저장되는지 (모닝 / 코칭)
+    await api.setOnlineCheck('st_a', 'online-coaching', wk, 'b2', 1, true);
+    const both = await api.getOnline('st_a');
+    eq('프로그램별로 따로 저장', [!!both.morning, !!both['online-coaching']], [true, true]);
+    eq('코칭 동작 체크', both['online-coaching'][wk].checks.b2[1], 1);
+
+    // 지난 주는 다른 칸
+    const lastWeek = api.weekKey(NOW - 7 * DAY);
+    ok('지난주 키가 다름', lastWeek !== wk, `${lastWeek} / ${wk}`);
+    eq('지난주는 빈 기록', await api.getOnline('st_a').then((o) => o.morning[lastWeek] || null), null);
+
+    // 강사 요약
+    const admin = await api.adminData();
+    const mine = admin.online.find((x) => x.studentId === 'st_a');
+    ok('강사 요약에 학생이 보임', !!mine, JSON.stringify(admin.online));
+    const morning = mine && mine.items.find((i) => i.programId === 'morning');
+    eq('모닝: 1/8 동작 · 1회', [morning.checked, morning.total, morning.count], [1, 8, 1]);
+    eq('모닝 노트 그대로', morning.note, '  오른쪽 어깨가 걸려요  ');
+    const coaching = mine && mine.items.find((i) => i.programId === 'online-coaching');
+    eq('코칭: 1/8 동작', [coaching.checked, coaching.count], [1, 1]);
+    ok('기록 없는 학생은 제외', !admin.online.some((x) => x.studentId === 'st_new'), JSON.stringify(admin.online.map((x) => x.studentId)));
+  }
+
+  /* ────────────────────────────────────────────────────────
+     8. 온라인 기록이 없던 저장 데이터도 열린다 (마이그레이션)
+     ──────────────────────────────────────────────────────── */
+  console.log('\n[8] 기존 데이터 호환');
+  {
+    const old = baseState(NOW);
+    delete old.online;
+    const { api, read } = makeContext({ now: NOW, state: old });
+    eq('기존 데이터에 online 칸 생성', await api.getOnline('st_a'), {});
+    const rec = await api.setOnlineCheck('st_a', 'morning', api.weekKey(), 'mm2', 3, true);
+    eq('바로 체크 가능', rec.checks.mm2[3], 1);
+    ok('저장소에도 반영', !!read().online.st_a.morning);
+  }
+
   /* ── 결과 ─────────────────────────────────────────────── */
   console.log(`\n${failures.length ? '✗ 실패' : '✓ 통과'} — ${passed}개 확인, ${failures.length}개 실패`);
   if (failures.length) {
