@@ -458,6 +458,130 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     eq('version 1 → 새 데모로 초기화', [!!warmed, warmed.classes], [true, ['handstand', 'functional', 'morning']]);
   }
 
+  /* ────────────────────────────────────────────────────────
+     12. 신규 등록 — 수업 필수 선택 · 다중 선택
+     ──────────────────────────────────────────────────────── */
+  console.log('\n[12] 신규 등록 — 수업 필수 · 다중 선택');
+  {
+    /* 12-1. 수업 0개는 신청 자체가 막힘 */
+    {
+      const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
+      await throws('수업 0개는 신청 불가', () => api.request('st_new', 'register', []), /수업을 하나 이상/);
+      await throws('수업 없이 보내면 신청 불가', () => api.request('st_new', 'register'), /수업을 하나 이상/);
+      await throws('없는 수업만 골라도 신청 불가', () => api.request('st_new', 'register', ['nope', 'zzz']), /수업을 하나 이상/);
+      await throws('없는 수강권 종류는 거부', () => api.request('st_new', 'register', ['morning'], { passType: '12' }), /수강권/);
+      eq('막힌 신청은 저장되지 않음', (await api.adminData()).pending.length, 0);
+      eq('저장소 요청도 0건', read().requests.length, 0);
+      eq('김하늘은 여전히 열린 수업 없음', (await api.getStudent('st_new')).classes, []);
+    }
+
+    /* 12-2. 1개(온라인) 신청 → 승인 → 그 수업만 열림 (수강권 없이) */
+    {
+      const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
+      const asked = await api.request('st_new', 'register', ['morning']);
+      eq('신청 직후 확인 중', asked.status, 'pending');
+      eq('신청한 수업이 신청서에 담김', asked.pending.classes, ['morning']);
+      eq('신청서에 저장된 수업', read().requests[0].classes, ['morning']);
+
+      const data = await api.adminData();
+      eq('강사 대기 목록에 신청 수업', data.pending[0].classes, ['morning']);
+      eq('온라인만이라 오프라인 수업 없음', data.pending[0].offline, 0);
+
+      const v = await api.approveRequest(data.pending[0].id, '');
+      eq('승인하면 신청한 수업이 열림', v.classes, ['morning']);
+      eq('열린 수업 접근', v.access.online, ['morning']);
+      eq('온라인만 신청은 수강권 없이', v.pass, null);
+      eq('요청은 승인으로 정리', read().requests[0].status, 'approved');
+    }
+
+    /* 12-3. 오프라인 + 온라인 2개 동시 신청 → 승인 → 두 수업 모두 열림 */
+    {
+      const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
+      const asked = await api.request('st_new', 'register', ['functional', 'morning'], { passType: 8 });
+      eq('신청서에 두 수업', asked.pending.classes, ['functional', 'morning']);
+      eq('희망 수강권 저장', asked.pending.passType, 8);
+
+      const data = await api.adminData();
+      eq('강사 목록 신청 수업 2개', data.pending[0].classes, ['functional', 'morning']);
+      eq('오프라인 수업 포함', data.pending[0].offline, 1);
+      eq('희망 수강권 전달', data.pending[0].passType, 8);
+
+      const v = await api.approveRequest(data.pending[0].id, '8');
+      eq('승인하면 두 수업 모두 열림', v.classes, ['functional', 'morning']);
+      eq('오프라인/온라인 접근 함께 열림', [v.access.offline, v.access.online], [['functional'], ['morning']]);
+      eq('8회권 개시', [v.pass.type, v.pass.total, v.pass.remaining], [8, 8, 8]);
+      eq('사용 0회로 시작', read().students.find((s) => s.id === 'st_new').pass.used, 0);
+
+      /* 오프라인 수업 예약과 온라인 체크가 같이 된다 */
+      const fuId = await sessionId(api, { y: 2026, m: 11, d: 29, hh: 10, mm: 0 });
+      const booked = await api.book('st_new', fuId);
+      eq('열린 오프라인 수업 예약', booked.bookings[0].classId, 'functional');
+      const rec = await api.setOnlineCheck('st_new', 'morning', api.weekKey(), 'mm1', 1, true);
+      eq('열린 온라인 수업 체크', rec.checks.mm1[1], 1);
+      const hsId = await sessionId(api, { y: 2026, m: 11, d: 26, hh: 14, mm: 0 });
+      await throws('신청하지 않은 수업은 예약 불가', () => api.book('st_new', hsId), /수강 중인 수업/);
+    }
+
+    /* 12-4. 오프라인 2개 동시 신청 */
+    {
+      const { api } = makeContext({ now: NOW, state: baseState(NOW) });
+      const asked = await api.request('st_new', 'renewal', ['handstand', 'functional'], { passType: 4 });
+      eq('오프라인 두 수업 신청', asked.pending.classes, ['handstand', 'functional']);
+      const data = await api.adminData();
+      const v = await api.approveRequest(data.pending[0].id, '4');
+      eq('두 오프라인 수업 모두 열림', v.classes, ['handstand', 'functional']);
+      eq('시퀀스도 열림', v.access.sequence, true);
+
+      const hsId = await sessionId(api, { y: 2026, m: 11, d: 26, hh: 14, mm: 0 });
+      const fuId = await sessionId(api, { y: 2026, m: 11, d: 29, hh: 10, mm: 0 });
+      await api.book('st_new', hsId);
+      const both = await api.book('st_new', fuId);
+      eq('두 수업 예약이 모두 들어감', both.bookings.map((b) => b.classId), ['handstand', 'functional']);
+      eq('4회권 2회 사용', both.pass.used, 2);
+    }
+
+    /* 12-5. 이미 열린 수업은 유지하고 신청한 수업을 더함 */
+    {
+      const { api } = makeContext({ now: NOW, state: baseState(NOW) });
+      /* 모닝만 듣던 수강생이 코칭을 추가 신청 */
+      await api.request('st_only_morn', 'register', ['coaching']);
+      let data = await api.adminData();
+      const req = data.pending.find((r) => r.studentName === '남모닝');
+      eq('추가 신청에도 수업이 담김', req.classes, ['coaching']);
+      eq('이미 열린 수업은 유지 대상', req.currentClasses, ['morning']);
+      const v = await api.approveRequest(req.id, '');
+      eq('기존 + 신청 수업이 함께 열림', v.classes, ['morning', 'coaching']);
+      eq('수강권은 여전히 없음', v.pass, null);
+
+      /* 수강권이 소진된 수강생의 재등록 — 기존 수업 유지 */
+      const { api: api2 } = makeContext({ now: NOW, state: baseState(NOW) });
+      await api2.request('st_sold', 'renewal', ['handstand', 'morning']);
+      data = await api2.adminData();
+      const r2 = data.pending[0];
+      eq('재등록 신청 수업', r2.classes, ['handstand', 'morning']);
+      const v2 = await api2.approveRequest(r2.id, '8');
+      eq('재등록 승인 후 수업', v2.classes, ['handstand', 'morning']);
+      eq('재등록 수강권', [v2.pass.total, v2.pass.remaining], [8, 8]);
+    }
+
+    /* 12-6. 승인 쪽 검증 */
+    {
+      const { api } = makeContext({ now: NOW, state: baseState(NOW) });
+      await api.request('st_new', 'register', ['handstand'], { passType: 4 });
+      const data = await api.adminData();
+      const id = data.pending[0].id;
+
+      await throws('승인에서도 수업 0개는 막힘', () => api.approveRequest(id, '4', []), /수업을 하나 이상/);
+      await throws('오프라인을 수강권 없이 열 수는 없음', () => api.approveRequest(id, ''), /수강권/);
+      eq('막힌 승인 후에도 요청은 남아 있음', (await api.adminData()).pending.length, 1);
+
+      const v = await api.approveRequest(id, '4', ['handstand', 'morning']);
+      eq('강사가 고른 수업으로 승인', v.classes, ['handstand', 'morning']);
+      await throws('처리된 요청은 다시 승인 불가', () => api.approveRequest(id, '4'), /찾을 수 없|이미 처리/);
+      await throws('없는 요청은 오류', () => api.approveRequest('rq_none', '4'), /찾을 수 없/);
+    }
+  }
+
   /* ── 결과 ─────────────────────────────────────────────── */
   console.log(`\n${failures.length ? '✗ 실패' : '✓ 통과'} — ${passed}개 확인, ${failures.length}개 실패`);
   if (failures.length) {

@@ -683,7 +683,15 @@ const api = (() => {
       name: student.name,
       code: student.code,
       status,
-      pending: pending ? { id: pending.id, type: pending.type, createdAt: pending.createdAt } : null,
+      pending: pending
+        ? {
+          id: pending.id,
+          type: pending.type,
+          createdAt: pending.createdAt,
+          classes: normalizeClasses(pending.classes),
+          passType: pending.passType == null ? null : Number(pending.passType),
+        }
+        : null,
       pass,
       bookings,
       classes: access.classes,
@@ -803,19 +811,33 @@ const api = (() => {
     },
 
     /* ── 신규 등록 / 재등록 요청 ── */
-    /* classes: 수강을 원하는 수업(선택). 강사가 승인할 때 그대로 열어 줄 수 있습니다. */
-    async request(studentId, type, classes) {
+    /* classes: 수강을 원하는 수업(최소 1개, 여러 개 가능). 강사가 승인할 때 그대로 열어 줍니다.
+       options.passType: 희망 수강권(4·8). 오프라인 수업을 골랐을 때 화면에서 고르게 합니다.
+       허용된 수업을 하나도 고르지 않으면 신청 자체를 막습니다. */
+    async request(studentId, type, classes, options = {}) {
       const s = load();
       const student = s.students.find((x) => x.id === studentId);
       if (!student) throw new Error('수강생 정보를 찾을 수 없어요.');
       if (s.requests.some((r) => r.studentId === studentId && r.status === 'pending')) {
         throw new Error('이미 확인 중인 요청이 있어요.');
       }
+
+      const picked = normalizeClasses(Array.isArray(classes) ? classes : student.classes);
+      if (!picked.length) throw new Error('수업을 하나 이상 선택해 주세요.');
+
+      const rawPass = options && options.passType;
+      let passType = null;
+      if (rawPass !== undefined && rawPass !== null && rawPass !== '') {
+        passType = Number(rawPass);
+        if (!CONFIG.passTypes[passType]) throw new Error('수강권 종류를 다시 선택해 주세요.');
+      }
+
       const request = {
         id: uid('rq'),
         studentId,
         type, // 'register' | 'renewal'
-        classes: normalizeClasses(Array.isArray(classes) ? classes : student.classes),
+        classes: picked,
+        passType,
         status: 'pending',
         createdAt: new Date().toISOString(),
       };
@@ -865,12 +887,38 @@ const api = (() => {
       return viewStudent(studentId);
     },
 
+    /* 승인 — 신청한 수업을 한 번에 엽니다.
+       이미 열려 있던 수업은 그대로 두고 신청한 수업을 더합니다.
+       type 이 비어 있으면 수강권 없이 수업만 엽니다(온라인 전용 신청). */
     async approveRequest(requestId, type, classes) {
       const s = load();
       const req = s.requests.find((r) => r.id === requestId);
       if (!req) throw new Error('요청을 찾을 수 없어요.');
-      const next = Array.isArray(classes) ? classes : req.classes;
-      return this.grantPass(req.studentId, type, next);
+      if (req.status !== 'pending') throw new Error('이미 처리된 요청이에요.');
+      const student = s.students.find((x) => x.id === req.studentId);
+      if (!student) throw new Error('수강생을 찾을 수 없어요.');
+
+      const picked = normalizeClasses(Array.isArray(classes) ? classes : req.classes);
+      if (!picked.length) throw new Error('수업을 하나 이상 선택해 주세요.');
+      const merged = normalizeClasses((student.classes || []).concat(picked));
+
+      const wantsPass = !(type === undefined || type === null || type === '' || type === 'none');
+      if (!wantsPass) {
+        if (offlineOf(picked).length) {
+          throw new Error('오프라인 수업을 열려면 수강권을 골라 주세요.');
+        }
+        student.classes = merged;
+        const now = new Date().toISOString();
+        s.requests
+          .filter((r) => r.studentId === student.id && r.status === 'pending')
+          .forEach((r) => {
+            r.status = 'approved';
+            r.resolvedAt = now;
+          });
+        save();
+        return viewStudent(student.id);
+      }
+      return this.grantPass(req.studentId, type, merged);
     },
 
     /* ── 강사: 회원 등록 · 수업 접근 관리 ── */
@@ -1024,12 +1072,19 @@ const api = (() => {
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
           .map((r) => {
             const st = s.students.find((x) => x.id === r.studentId);
+            const reqClasses = normalizeClasses(r.classes || (st && st.classes));
             return {
               id: r.id,
               type: r.type,
               createdAt: r.createdAt,
               studentName: st ? st.name : '—',
-              classes: normalizeClasses(r.classes || (st && st.classes)),
+              studentCode: st ? st.code : '',
+              classes: reqClasses,
+              passType: r.passType == null ? null : Number(r.passType),
+              /* 이미 열려 있는 수업 (승인하면 여기에 신청 수업이 더해집니다) */
+              currentClasses: normalizeClasses(st && st.classes),
+              offline: offlineOf(reqClasses).length,
+              online: onlineOf(reqClasses).length,
             };
           }),
         days: Array.from(byDay.entries()).map(([key, list]) => ({
