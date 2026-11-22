@@ -496,6 +496,7 @@ ol {
 
 .login-row {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--line);
@@ -1498,6 +1499,20 @@ details.day[open] summary::after {
   .srow-act {
     grid-column: 2;
     justify-content: flex-start;
+  }
+
+  /* 좁은 화면에서 로그인 폼이 가로로 넘치지 않게 */
+  .login-form {
+    flex-wrap: wrap;
+  }
+
+  .login-form input {
+    flex: 1 1 45%;
+    width: 0;
+  }
+
+  .login-form .btn {
+    flex: 1 1 100%;
   }
 }
 
