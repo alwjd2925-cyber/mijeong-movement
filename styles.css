@@ -1328,6 +1328,23 @@ dialog.modal--admin {
   margin-top: 8px;
 }
 
+.book-row {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.book-row .select {
+  height: 36px;
+  width: 100%;
+  min-width: 0;
+}
+
+.book-row .btn-mini {
+  height: 36px;
+  width: 100%;
+}
+
 table.stu-table {
   width: 100%;
   border-collapse: collapse;
@@ -1415,16 +1432,75 @@ details.day[open] summary::after {
   margin-left: 2px;
 }
 
+.ds-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .day-session strong {
   font-size: 12px;
   font-weight: 550;
 }
 
-.day-session span {
-  display: block;
+.ds-count {
+  flex: none;
   font-size: 10.5px;
   color: var(--ink-45);
-  margin-top: 2px;
+}
+
+.bk-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.bk-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 0;
+}
+
+.bk-name {
+  font-size: 11.5px;
+  color: var(--ink-70);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bk-tag {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-45);
+  white-space: nowrap;
+}
+
+.bk-tag.is-late {
+  border-color: rgba(122, 31, 31, 0.35);
+  color: #7a1f1f;
+}
+
+.bk-item .btn-mini {
+  flex: none;
+  margin-left: auto;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 10.5px;
+}
+
+.btn-mini--x:hover {
+  border-color: #7a1f1f;
+  color: #7a1f1f;
+  background: none;
 }
 
 .day-names {
@@ -1542,6 +1618,16 @@ details.day[open] summary::after {
 
   .grant-row .select {
     width: auto;
+  }
+
+  .book-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto;
+    align-items: center;
+  }
+
+  .book-row .btn-mini {
+    width: auto;
+    padding: 0 14px;
   }
 }
 

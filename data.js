@@ -440,8 +440,10 @@ const api = (() => {
     },
 
     /* ── 예약 ── */
-    async book(studentId, sessionId) {
+    /* byInstructor: true 로 부르면 강사 모드의 대리 예약 (규칙은 수강생 예약과 같습니다) */
+    async book(studentId, sessionId, options = {}) {
       const s = load();
+      const byInstructor = !!(options && options.byInstructor);
       const student = s.students.find((x) => x.id === studentId);
       if (!student) throw new Error('수강생 정보를 찾을 수 없어요.');
 
@@ -470,6 +472,7 @@ const api = (() => {
         id: uid('bk'),
         studentId,
         sessionId,
+        by: byInstructor ? 'instructor' : 'student',
         createdAt: new Date().toISOString(),
       });
       student.pass.used += 1;
@@ -482,14 +485,19 @@ const api = (() => {
       return new Date(new Date(session.startISO).getTime() - CONFIG.cancelDeadlineMs);
     },
 
-    async cancel(studentId, bookingId) {
+    /* byInstructor: true 면 1시간 전 마감과 무관하게 취소 (강사 대리 취소) */
+    async cancel(studentId, bookingId, options = {}) {
       const s = load();
+      const byInstructor = !!(options && options.byInstructor);
       const booking = s.bookings.find((b) => b.id === bookingId && b.studentId === studentId);
       if (!booking) throw new Error('예약을 찾을 수 없어요.');
 
       const session = sessionFor(booking.sessionId);
       if (!session) throw new Error('이미 지난 수업이에요.');
-      if (Date.now() > this.cancelDeadline(session).getTime()) {
+      if (byInstructor) {
+        /* 강사는 마감과 무관하게 취소할 수 있고, 횟수도 그대로 돌려줍니다 */
+        if (session.end <= Date.now()) throw new Error('이미 끝난 수업이에요.');
+      } else if (Date.now() > this.cancelDeadline(session).getTime()) {
         throw new Error('취소 마감 시간이 지났어요. (수업 시작 1시간 전까지)');
       }
 
@@ -498,6 +506,18 @@ const api = (() => {
       if (student && student.pass) student.pass.used = Math.max(0, student.pass.used - 1);
       save();
       return viewStudent(studentId);
+    },
+
+    /* ── 강사 대리 예약 / 대리 취소 ── */
+    async adminBook(studentId, sessionId) {
+      return this.book(studentId, sessionId, { byInstructor: true });
+    },
+
+    async adminCancel(bookingId) {
+      const s = load();
+      const booking = s.bookings.find((b) => b.id === bookingId);
+      if (!booking) throw new Error('예약을 찾을 수 없어요.');
+      return this.cancel(booking.studentId, bookingId, { byInstructor: true });
     },
 
     /* ── 신규 등록 / 재등록 요청 ── */
@@ -563,11 +583,13 @@ const api = (() => {
     /* ── 강사 화면 데이터 ── */
     async adminData() {
       const s = load();
+      const now = Date.now();
       const sessions = buildSessions(new Date(), CONFIG.bookingWindowDays);
       const students = s.students.map((st) => {
         const v = viewStudent(st.id);
         return { id: v.id, name: v.name, code: v.code, status: v.status, pass: v.pass };
       });
+      const nameOf = new Map(students.map((st) => [st.id, st]));
 
       const byDay = new Map();
       sessions.forEach((session) => {
@@ -575,19 +597,33 @@ const api = (() => {
         if (!byDay.has(key)) byDay.set(key, []);
         byDay.get(key).push({
           id: session.id,
+          classId: session.classId,
           className: session.className,
           startISO: session.startISO,
           endISO: session.endISO,
+          startMs: session.start,
+          /* 수강생이 스스로 취소할 수 있는 시각이 지났는지 */
+          late: now > session.start - CONFIG.cancelDeadlineMs,
+          /* 아직 시작하지 않은 수업만 새로 예약할 수 있습니다 */
+          bookable: session.start > now,
           bookings: s.bookings
             .filter((b) => b.sessionId === session.id)
             .map((b) => {
               const st = s.students.find((x) => x.id === b.studentId);
-              return { id: b.id, studentId: b.studentId, name: st ? st.name : '—' };
+              const info = nameOf.get(b.studentId) || null;
+              return {
+                id: b.id,
+                studentId: b.studentId,
+                name: st ? st.name : '—',
+                by: b.by === 'instructor' ? 'instructor' : 'student',
+                passLabel: info && info.pass ? info.pass.label : '',
+              };
             }),
         });
       });
 
       return {
+        now,
         students,
         pending: s.requests
           .filter((r) => r.status === 'pending')
