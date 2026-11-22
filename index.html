@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>미정 클래스 · 핸드스탠드 &amp; 요가</title>
+<meta name="description" content="핸드스탠드 무브먼트와 요가 클래스. 시간표 확인부터 수강권 예약, 수업 시퀀스까지 한 곳에서.">
+<meta name="theme-color" content="#FAFAF8">
+<meta property="og:title" content="미정 클래스 · 핸드스탠드 &amp; 요가">
+<meta property="og:description" content="핸드스탠드 무브먼트와 요가 클래스. 시간표 확인부터 수강권 예약, 수업 시퀀스까지.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23FAFAF8'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23181818'/%3E%3Ccircle cx='16' cy='16' r='3.4' fill='%23E8D54B'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap head-inner">
+    <a class="brand" href="#top" aria-label="미정 클래스, 맨 위로">
+      <span class="brand-handle">@mi.jeong_k</span>
+      <span class="brand-sub">handstand &amp; yoga</span>
+    </a>
+    <nav class="head-nav" aria-label="섹션 이동">
+      <a href="#class">class</a>
+      <a href="#booking">booking</a>
+      <a href="#sequence">sequence</a>
+    </nav>
+    <button class="head-admin" type="button" data-open-admin>강사</button>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ───────────── hero ───────────── -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">h a n d s t a n d&nbsp;&nbsp;&amp;&nbsp;&nbsp;y o g a</p>
+        <h1>손으로 서는 연습,<br><span class="mark">몸을 세우는</span> 시간.</h1>
+        <p class="lede">
+          벽에서 시작해 한 걸음씩. 핸드스탠드 무브먼트와 요가를
+          같은 호흡으로 쌓아가는 클래스입니다.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-solid" href="https://www.instagram.com/mi.jeong_k/" target="_blank" rel="noopener">인스타 DM 문의 <span class="btn-arrow" aria-hidden="true">↗</span></a>
+          <a class="btn btn-line" href="#class">시간표 보기</a>
+        </div>
+        <ul class="hero-tags" aria-label="수업 종류">
+          <li>핸드스탠드 무브먼트</li>
+          <li>펑셔널 요가</li>
+          <li>지호요가</li>
+        </ul>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <svg class="il il--hero"><use href="#il-handstand"></use></svg>
+        <svg class="il-dots"><use href="#il-dots"></use></svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── class ───────────── -->
+  <section class="section" id="class">
+    <div class="wrap section-grid">
+      <aside class="rail">
+        <span class="rail-title">class:</span>
+      </aside>
+      <div class="section-body">
+        <p class="section-lede">
+          네 가지 수업이 있습니다. 손으로 서는 힘을 기르는 무브먼트 클래스,
+          몸의 움직임을 정리하는 요가, 그리고 거꾸로 서는 자세와 정렬을 다루는 지호요가.
+          처음이라면 핸드스탠드 무브먼트의 비기너 반에서 시작해 보세요.
+        </p>
+
+        <div class="class-grid" id="classGrid"><!-- data.js --></div>
+
+        <p class="footnote">* 시간표와 인원은 바뀔 수 있습니다. 첫 수업은 인스타 DM으로 문의해 주세요.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── booking ───────────── -->
+  <section class="section" id="booking">
+    <div class="wrap section-grid">
+      <aside class="rail">
+        <span class="rail-title">booking:</span>
+      </aside>
+      <div class="section-body">
+        <p class="section-lede">
+          수강권은 4회권과 8회권이 있습니다. 수강권이 있으면 아래에서 바로 날짜를 골라 예약하고,
+          수업 시작 1시간 전까지 취소할 수 있어요.
+        </p>
+
+        <div class="panel booking-panel">
+          <div class="login-row">
+            <div class="login-block">
+              <p class="field-label">수강생 선택 <span class="field-hint">시안용 데모</span></p>
+              <div class="demo-switch" id="demoSwitch" role="group" aria-label="데모 수강생 선택">
+                <button type="button" data-demo="st_new">신규 수강생</button>
+                <button type="button" data-demo="st_pass4">4회권 보유</button>
+                <button type="button" data-demo="st_exhausted">8회권 소진</button>
+              </div>
+            </div>
+            <div class="login-block login-block--form">
+              <p class="field-label">이름 + 코드로 로그인</p>
+              <form class="login-form" id="loginForm" autocomplete="off">
+                <input type="text" name="name" placeholder="이름" aria-label="이름" required>
+                <input type="text" name="code" placeholder="수강 코드" aria-label="수강 코드" required>
+                <button class="btn btn-line btn--sm" type="submit">확인</button>
+              </form>
+              <p class="field-hint">예: 이서연 / MJ-2048</p>
+            </div>
+          </div>
+
+          <div class="student-area" id="studentArea"><!-- app.js --></div>
+        </div>
+
+        <p class="footnote">* 시안입니다. 예약과 수강권 정보는 이 브라우저(localStorage)에만 저장됩니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── sequence ───────────── -->
+  <section class="section" id="sequence">
+    <div class="wrap section-grid">
+      <aside class="rail">
+        <span class="rail-title">sequence:</span>
+      </aside>
+      <div class="section-body">
+        <p class="section-lede">
+          수업에서 함께 하는 동작 순서입니다. 워밍업은 비기너·인터미디엇 공통으로 하고,
+          이후 레벨에 따라 다르게 진행합니다.
+        </p>
+
+        <div class="warm-block">
+          <div class="warm-head">
+            <h3 class="seq-sub">w a r m &nbsp;-&nbsp; u p</h3>
+            <span class="warm-note">공통 · 비기너 / 인터미디엇</span>
+          </div>
+          <ol class="step-list" id="warmupList"><!-- data.js --></ol>
+        </div>
+
+        <div class="seq-head">
+          <div class="seq-tabs" role="tablist" aria-label="레벨 선택">
+            <button class="seq-tab is-active" type="button" role="tab" aria-selected="true" data-level="beginner">Beginner</button>
+            <button class="seq-tab" type="button" role="tab" aria-selected="false" data-level="intermediate">Intermediate</button>
+          </div>
+          <span class="seq-count" id="seqCount"></span>
+        </div>
+
+        <ol class="step-list step-list--main" id="seqList"><!-- app.js --></ol>
+
+        <p class="footnote">* 동작 순서와 횟수는 수업 당일 컨디션에 따라 조정될 수 있습니다. 영상은 준비되는 대로 연결됩니다.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-grid">
+    <div>
+      <p class="foot-brand">@mi.jeong_k</p>
+      <p class="foot-line">핸드스탠드 무브먼트 · 펑셔널 요가 · 지호요가</p>
+    </div>
+    <div class="foot-links">
+      <a href="https://www.instagram.com/mi.jeong_k/" target="_blank" rel="noopener">Instagram ↗</a>
+      <button type="button" class="foot-admin" data-open-admin>강사 모드</button>
+    </div>
+    <p class="foot-note">이 페이지는 첫 번째 시안입니다. 예약 데이터는 이 브라우저에만 저장되어 실제 예약으로 이어지지 않습니다.</p>
+  </div>
+</footer>
+
+<!-- ───────────── video modal ───────────── -->
+<dialog class="modal" id="videoModal" aria-label="동작 영상">
+  <div class="modal-inner">
+    <div class="modal-head">
+      <div>
+        <p class="modal-kicker" id="videoLevel">warm-up</p>
+        <h3 class="modal-title" id="videoTitle">동작 영상</h3>
+      </div>
+      <button class="modal-close" type="button" data-close-video aria-label="닫기">✕</button>
+    </div>
+    <div class="video-frame" id="videoFrame"><!-- iframe / placeholder --></div>
+    <div class="modal-foot">
+      <a class="btn-video" id="videoLink" href="#" target="_blank" rel="noopener" hidden>유튜브에서 크게 보기 ↗</a>
+      <p class="video-hint" id="videoHint"></p>
+    </div>
+  </div>
+</dialog>
+
+<!-- ───────────── admin modal ───────────── -->
+<dialog class="modal modal--admin" id="adminModal" aria-label="강사 모드">
+  <div class="modal-inner">
+    <div class="modal-head">
+      <div>
+        <p class="modal-kicker">for instructor</p>
+        <h3 class="modal-title">강사 모드</h3>
+      </div>
+      <button class="modal-close" type="button" data-close-admin aria-label="닫기">✕</button>
+    </div>
+    <div class="admin-body" id="adminBody"><!-- app.js --></div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<noscript>
+  <p style="padding:24px;text-align:center">이 페이지는 JavaScript가 필요합니다.</p>
+</noscript>
+
+<!-- ───────────── inline line-art sprite ───────────── -->
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="il-handstand" viewBox="0 0 160 160">
+    <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M30 133h100" stroke-width="1.4" opacity=".35"></path>
+      <path d="M66 127c2-11 4-21 8-31" stroke-width="2.4"></path>
+      <path d="M94 127c-2-11-4-21-8-31" stroke-width="2.4"></path>
+      <path d="M58 130h13"></path>
+      <path d="M89 130h13"></path>
+      <circle cx="80" cy="108" r="6.5"></circle>
+      <path d="M80 96c-2-11-2-23-1-34"></path>
+      <path d="M79 62c-3-13-7-26-11-38"></path>
+      <path d="M80 62c4-13 8-26 11-38"></path>
+      <path d="M68 24l-8 4"></path>
+      <path d="M91 24l8 4"></path>
+      <path d="M108 92c4-5 5-11 3-16" opacity=".4"></path>
+      <path d="M52 92c-4-5-5-11-3-16" opacity=".4"></path>
+    </g>
+  </symbol>
+
+  <symbol id="il-functional" viewBox="0 0 160 160">
+    <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M26 133h108" stroke-width="1.4" opacity=".35"></path>
+      <path d="M44 129c6-13 12-26 18-41"></path>
+      <path d="M40 130c3-3 7-2 9 1"></path>
+      <path d="M62 88c12-9 24-16 36-23"></path>
+      <path d="M98 65c8 12 13 24 16 35"></path>
+      <path d="M114 100c3 10 5 20 5 29"></path>
+      <path d="M115 130c4-2 8-2 11 0"></path>
+      <circle cx="66" cy="97" r="6.5"></circle>
+    </g>
+  </symbol>
+
+  <symbol id="il-inversion" viewBox="0 0 160 160">
+    <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M124 30v102" stroke-width="1.4" opacity=".35"></path>
+      <path d="M26 133h120" stroke-width="1.4" opacity=".35"></path>
+      <circle cx="48" cy="124" r="8"></circle>
+      <path d="M54 124c18 3 34 2 50 0"></path>
+      <path d="M104 124c6-18 8-38 7-58"></path>
+      <path d="M110 123c5-18 9-38 10-56"></path>
+      <path d="M104 62h11"></path>
+      <path d="M113 64h11"></path>
+    </g>
+  </symbol>
+
+  <symbol id="il-align" viewBox="0 0 160 160">
+    <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M106 34v100" stroke-width="1.2" stroke-dasharray="3 7" opacity=".45"></path>
+      <circle cx="80" cy="45" r="9"></circle>
+      <path d="M80 56v36"></path>
+      <path d="M80 61c-8 4-13 12-15 21"></path>
+      <path d="M80 61c8 4 13 12 15 21"></path>
+      <path d="M80 93c-5 10-8 20-9 29"></path>
+      <path d="M80 93c5 10 8 20 9 29"></path>
+      <path d="M63 125h13"></path>
+      <path d="M85 125h13"></path>
+      <path d="M92 45h12" stroke-width="1.2" opacity=".4"></path>
+      <path d="M82 93h22" stroke-width="1.2" opacity=".4"></path>
+      <path d="M92 125h12" stroke-width="1.2" opacity=".4"></path>
+    </g>
+  </symbol>
+
+  <symbol id="il-dots" viewBox="0 0 72 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <circle cx="12" cy="12" r="8"></circle>
+      <circle cx="36" cy="12" r="8"></circle>
+      <circle cx="60" cy="12" r="8"></circle>
+    </g>
+    <g fill="currentColor" stroke="none">
+      <circle cx="9.4" cy="10" r="1"></circle>
+      <circle cx="14.6" cy="10" r="1"></circle>
+      <circle cx="33.4" cy="10" r="1"></circle>
+      <circle cx="38.6" cy="10" r="1"></circle>
+      <circle cx="57.4" cy="10" r="1"></circle>
+      <circle cx="62.6" cy="10" r="1"></circle>
+    </g>
+    <g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+      <path d="M9.6 14c1.3 1.3 3.5 1.3 4.8 0"></path>
+      <path d="M33.6 14c1.3 1.3 3.5 1.3 4.8 0"></path>
+      <path d="M57.6 14c1.3 1.3 3.5 1.3 4.8 0"></path>
+    </g>
+  </symbol>
+</svg>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
