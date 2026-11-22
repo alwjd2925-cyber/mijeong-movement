@@ -96,8 +96,10 @@
   function renderClasses() {
     const grid = $('#classGrid');
     if (!grid) return;
-    grid.innerHTML = CLASSES.map((cls) => `
-      <article class="class-card">
+    grid.innerHTML = CLASSES.map((cls) => {
+      const online = cls.mode === 'online';
+      return `
+      <article class="class-card${online ? ' is-online' : ''}">
         <div class="class-art">
           <svg class="il" aria-hidden="true"><use href="#il-${esc(cls.icon)}"></use></svg>
           <svg class="il-dots" aria-hidden="true"><use href="#il-dots"></use></svg>
@@ -107,13 +109,16 @@
             <h3>${esc(cls.name)}</h3>
             <span class="class-en">${esc(cls.en)}</span>
           </div>
-          <span class="class-dur">${esc(cls.duration)}</span>
+          <div class="class-meta">
+            <span class="mode${online ? ' is-online' : ''}">${online ? '온라인' : '오프라인'}</span>
+            ${cls.duration ? `<span class="class-dur">${esc(cls.duration)}</span>` : ''}
+          </div>
         </div>
-        <p class="class-when">${esc(scheduleLabel(cls))}</p>
+        <p class="class-when">${esc(cls.when || scheduleLabel(cls))}</p>
         <p class="class-blurb">${esc(cls.blurb)}</p>
         <p class="class-note">${esc(cls.note)}</p>
-      </article>
-    `).join('');
+      </article>`;
+    }).join('');
   }
 
   /* ── booking ───────────────────────────────────────────── */
