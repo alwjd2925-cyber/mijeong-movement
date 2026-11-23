@@ -384,7 +384,7 @@
       <div class="cls-picks cls-picks--student" data-reg-picks role="group" aria-label="신청할 수업">
         ${CLASSES.map((cls) => `
           <label class="cls-pick${cls.mode === 'online' ? ' is-online' : ''}">
-            <input type="checkbox" value="${esc(cls.id)}"${picked.indexOf(cls.id) !== -1 ? ' checked' : ''}>
+            <input class="chk" type="checkbox" value="${esc(cls.id)}"${picked.indexOf(cls.id) !== -1 ? ' checked' : ''}>
             <span class="pck-body">
               <span class="pck-mode">${cls.mode === 'online' ? '온라인' : '오프라인'}</span>
               <span class="pck-name">${esc(cls.name)}</span>
@@ -394,10 +394,10 @@
 
       <div class="reg-pass${hasOffline ? '' : ' is-muted'}" data-reg-pass>
         <p class="reg-pass-label">수강권 <span>오프라인 수업을 고르면 필요해요</span></p>
-        <div class="pass-picks" role="radiogroup" aria-label="수강권 선택">
+        <div class="pass-picks" role="group" aria-label="수강권 선택 · 하나만">
           ${[4, 8].map((n) => `
             <label class="pass-pick">
-              <input type="radio" name="regPass" value="${n}"${String(UI.regPass) === String(n) ? ' checked' : ''}${hasOffline ? '' : ' disabled'}>
+              <input class="chk" type="checkbox" name="regPass" value="${n}"${String(UI.regPass) === String(n) ? ' checked' : ''}${hasOffline ? '' : ' disabled'}>
               <span>${CONFIG.passTypes[n].label}</span>
               <em>${CONFIG.passTypes[n].count}회 · ${CONFIG.passTypes[n].validDays}일</em>
             </label>`).join('')}
@@ -671,7 +671,11 @@
         return;
       }
 
+      /* 수강권은 하나만 — 체크박스 모양이지만 누른 것만 남기고, 누른 걸 다시 눌러도 유지 */
       if (event.target.name === 'regPass') {
+        const passBoxes = Array.from(form.querySelectorAll('input[name="regPass"]'));
+        passBoxes.forEach((box) => { box.checked = box === event.target; });
+        event.target.checked = true;
         UI.regPass = event.target.value;
       }
     });
@@ -1230,7 +1234,7 @@
     const picked = classes || [];
     return `<div class="cls-picks" ${attr}="${esc(id)}">${CLASSES.map((cls) => `
       <label class="cls-pick">
-        <input type="checkbox" value="${esc(cls.id)}"${picked.indexOf(cls.id) !== -1 ? ' checked' : ''}>
+        <input class="chk" type="checkbox" value="${esc(cls.id)}"${picked.indexOf(cls.id) !== -1 ? ' checked' : ''}>
         <span>${esc(CLASS_SHORT[cls.id] || cls.name)}</span>
       </label>`).join('')}</div>`;
   }
