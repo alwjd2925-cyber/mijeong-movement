@@ -133,6 +133,9 @@ const CLASSES = [
       { dow: 6, start: '12:00', end: '13:30' },
       { dow: 0, start: '12:00', end: '13:30' },
     ],
+    /* 수업 소개 카드 그림 — 포스터 사진(4:5). 없으면 SVG 일러스트로 그립니다. */
+    poster: './assets/handstand-movement.jpg',
+    posterAlt: '핸드스탠드 무브먼트 포스터 — 거꾸로 홀로서기 프로젝트, 매주 수·목·토·일 오후 클래스',
     blurb:
       '벽에서 시작해 손으로 서는 감각까지. 90분 동안 어깨와 손목의 정렬을 만들고, kick up · straddle · split을 단계별로 쌓아갑니다. 같은 시간에 비기너와 인터미디엇이 각자의 순서로 움직입니다.',
     note: 'P3 · Beginner / Intermediate',
@@ -628,7 +631,7 @@ const api = (() => {
         createdAt: iso(addDays(now, -110)),
       },
     ];
-    const state = { version: 3, students, requests: [], bookings: [] };
+    const state = { version: 3, students, requests: [], bookings: [], notices: demoNotices(now) };
 
     const sessions = buildSessions(now, CONFIG.bookingWindowDays);
     const first = (id) => sessions.find((s) => s.classId === id) || null;
@@ -746,6 +749,77 @@ const api = (() => {
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   }
 
+  /* ── 공지사항 ──────────────────────────────────────────────
+     강사가 쓰는 공지. target = 'all'(전체 회원) 또는 수업 id(그 수업을 듣는 회원에게만).
+     회원 화면에는 상단 고정(pinned) → 최신순으로 보입니다. */
+  const NOTICE_TARGETS = ['all', 'handstand', 'functional', 'morning', 'coaching'];
+
+  function demoNotices(now) {
+    const d = (n) => dayKey(addDays(now, n));
+    return [
+      {
+        id: 'nt_demo1',
+        title: '12월 수업 시간표를 열었어요',
+        body: '12월 첫째 주까지 예약을 열어 두었습니다. 핸드스탠드 무브먼트는 수·목·토·일, 펑셔널 요가는 일요일 오전입니다. 수강권이 있으면 booking에서 바로 날짜를 고를 수 있어요.',
+        target: 'all',
+        pinned: true,
+        createdAt: d(-2),
+      },
+      {
+        id: 'nt_demo2',
+        title: '핸드스탠드 무브먼트 — 이번 주 워밍업 안내',
+        body: '이번 주는 손목 풀기와 어깨 정렬 워밍업을 15분으로 늘립니다. 수업 10분 전에 도착해 손목을 미리 풀어 두면 킥업이 훨씬 편해요. 손목이 불편하면 벽 아래 홀드부터 시작합니다.',
+        target: 'handstand',
+        pinned: false,
+        createdAt: d(-1),
+      },
+    ];
+  }
+
+  function toBool(value) {
+    return value === true || value === 'true' || value === 'on' || value === 1 || value === '1';
+  }
+
+  function cleanNoticeText(value, label, max) {
+    const text = String(value == null ? '' : value).replace(/\r\n/g, '\n').trim();
+    if (!text) throw new Error(`${label}을 입력해 주세요.`);
+    if (text.length > max) throw new Error(`${label}은 ${max}자까지 쓸 수 있어요.`);
+    return text;
+  }
+
+  function normalizeTarget(target) {
+    const t = String(target == null ? '' : target).trim();
+    if (NOTICE_TARGETS.indexOf(t) === -1) throw new Error('공지 대상을 전체 회원 또는 수업으로 골라 주세요.');
+    return t;
+  }
+
+  function noticeSort(a, b) {
+    if (!!a.pinned !== !!b.pinned) return b.pinned ? 1 : -1;
+    if (a.createdAt !== b.createdAt) return String(a.createdAt) < String(b.createdAt) ? 1 : -1;
+    return String(a.id) < String(b.id) ? 1 : -1;
+  }
+
+  function normalizeNotice(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    return {
+      id: String(raw.id || uid('nt')),
+      title: String(raw.title || '').trim(),
+      body: String(raw.body || '').trim(),
+      target: NOTICE_TARGETS.indexOf(raw.target) === -1 ? 'all' : raw.target,
+      pinned: !!raw.pinned,
+      createdAt: /^\d{4}-\d{2}-\d{2}$/.test(String(raw.createdAt || '')) ? raw.createdAt : dayKey(new Date()),
+    };
+  }
+
+  /* 그 수강생이 볼 공지 — 전체 공지 + 수강 중인 수업 공지 */
+  function noticesForStudent(student) {
+    const classes = normalizeClasses(student && student.classes);
+    return (state.notices || [])
+      .map(normalizeNotice)
+      .filter((n) => n && n.title && (n.target === 'all' || classes.indexOf(n.target) !== -1))
+      .sort(noticeSort);
+  }
+
   let state = null;
 
   function save() {
@@ -773,6 +847,12 @@ const api = (() => {
     /* 온라인 체크 기능 이전에 저장된 데이터 보정 */
     if (!state.online) {
       state.online = {};
+      save();
+    }
+    /* 공지사항 이전에 저장된 데이터에는 데모 공지를 한 번 넣어 둡니다.
+       강사가 모두 지우면 빈 배열로 남아 다시 채우지 않습니다. */
+    if (!Array.isArray(state.notices)) {
+      state.notices = demoNotices(new Date());
       save();
     }
     migrateClasses();
@@ -975,6 +1055,8 @@ const api = (() => {
       bookingsByClass,
       classes: access.classes,
       access,
+      /* 이 수강생에게 보이는 공지 (전체 + 수강 중인 수업) */
+      notices: noticesForStudent(student),
     };
   }
 
@@ -1294,6 +1376,61 @@ const api = (() => {
       return accessFor(student);
     },
 
+    /* ── 공지사항 ── */
+    async listNotices(studentId) {
+      const s = load();
+      const student = s.students.find((x) => x.id === studentId);
+      if (!student) return [];
+      return noticesForStudent(student);
+    },
+
+    /* 강사: 공지 작성 — { title, body, target, pinned } */
+    async addNotice(fields) {
+      const s = load();
+      if (!Array.isArray(s.notices)) s.notices = [];
+      const src = fields || {};
+      const notice = {
+        id: uid('nt'),
+        title: cleanNoticeText(src.title, '공지 제목', 80),
+        body: cleanNoticeText(src.body, '공지 내용', 1200),
+        target: normalizeTarget(src.target === undefined ? 'all' : src.target),
+        pinned: toBool(src.pinned),
+        createdAt: dayKey(new Date()),
+      };
+      s.notices.push(notice);
+      save();
+      return { ...notice };
+    },
+
+    /* 강사: 공지 수정 — 넘긴 항목만 바뀝니다 */
+    async updateNotice(id, fields) {
+      const s = load();
+      const notice = (s.notices || []).find((n) => n && n.id === id);
+      if (!notice) throw new Error('공지를 찾을 수 없어요.');
+      const src = fields || {};
+      if (src.title !== undefined) notice.title = cleanNoticeText(src.title, '공지 제목', 80);
+      if (src.body !== undefined) notice.body = cleanNoticeText(src.body, '공지 내용', 1200);
+      if (src.target !== undefined) notice.target = normalizeTarget(src.target);
+      if (src.pinned !== undefined) notice.pinned = toBool(src.pinned);
+      save();
+      return { ...notice };
+    },
+
+    /* 강사: 공지 삭제 */
+    async deleteNotice(id) {
+      const s = load();
+      const before = (s.notices || []).length;
+      s.notices = (s.notices || []).filter((n) => n && n.id !== id);
+      if (s.notices.length === before) throw new Error('공지를 찾을 수 없어요.');
+      save();
+      return true;
+    },
+
+    /* 공지 대상으로 고를 수 있는 값 */
+    noticeTargets() {
+      return NOTICE_TARGETS.slice();
+    },
+
     /* ── 온라인 클래스: 주간 체크 & 노트 ── */
     async getOnline(studentId) {
       const s = load();
@@ -1396,6 +1533,7 @@ const api = (() => {
       return {
         now,
         students,
+        notices: (s.notices || []).map(normalizeNotice).filter(Boolean).sort(noticeSort),
         roster: CLASS_ORDER.map((id) => {
           const cls = CLASSES.find((c) => c.id === id) || { id, name: id, mode: 'online' };
           return { id, name: cls.name, mode: cls.mode };

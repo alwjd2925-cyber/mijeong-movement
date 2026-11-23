@@ -832,6 +832,79 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     eq('예전 신청서도 승인 가능', [okay.passes.handstand.type, okay.passes.functional.type], [8, 8]);
   }
 
+  /* ────────────────────────────────────────────────────────
+     16. 공지사항 — 작성 · 수정 · 삭제 · 대상 필터링
+     ──────────────────────────────────────────────────────── */
+  console.log('\n[16] 공지사항');
+  {
+    // 저장된 공지가 없는 예전 데이터 → 데모 공지 2건이 한 번 들어갑니다
+    const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
+    await api.listNotices('st_a');
+    const seeded = read().notices || [];
+    eq('데모 공지 2건', seeded.length, 2);
+    eq('전체 공지 + 수업 공지', seeded.map((n) => n.target).sort(), ['all', 'handstand']);
+
+    // 회원별 노출 — 전체 공지 + 수강 중인 수업 공지만
+    const all = await api.listNotices('st_a');
+    eq('모든 수업 수강생은 두 건', all.length, 2);
+    eq('상단 고정이 먼저', all[0].pinned, true);
+    const morningOnly = await api.listNotices('st_only_morn');
+    eq('모닝만 듣는 회원은 전체 공지만', morningOnly.map((n) => n.target), ['all']);
+    const offlineOnly = await api.listNotices('st_only_off');
+    eq('펑셔널만 듣는 회원도 전체 공지는 보임', offlineOnly.map((n) => n.target), ['all']);
+    eq('없는 수강생은 빈 목록', await api.listNotices('nobody'), []);
+
+    // 등록 — 검증
+    await throws('제목 없는 공지는 막힘', () => api.addNotice({ title: '  ', body: '본문', target: 'all' }), /제목/);
+    await throws('내용 없는 공지는 막힘', () => api.addNotice({ title: '제목', body: '', target: 'all' }), /내용/);
+    await throws('없는 대상을 막힘', () => api.addNotice({ title: '제목', body: '본문', target: 'yoga' }), /대상/);
+
+    // 등록 — 대상별 노출
+    const added = await api.addNotice({ title: '펑셔널 요가 매트 준비', body: '이번 주 펑셔널 요가는 매트를 챙겨 주세요.', target: 'functional', pinned: false });
+    ok('공지 id가 생김', /^nt_/.test(added.id));
+    eq('작성일은 오늘', added.createdAt, '2026-11-25');
+    eq('등록한 공지는 수업 회원에게만', (await api.listNotices('st_only_off')).map((n) => n.title), ['12월 수업 시간표를 열었어요', '펑셔널 요가 매트 준비']);
+    eq('그 수업을 안 듣는 회원에게는 안 보임', (await api.listNotices('st_only_morn')).length, 1);
+    ok('저장소에 남음', read().notices.some((n) => n.id === added.id));
+
+    // 상단 고정이면 맨 위로
+    const pinnedNotice = await api.addNotice({ title: '휴강 안내', body: '11월 30일 수업은 쉽니다.', target: 'all', pinned: true });
+    eq('고정 공지가 맨 앞', (await api.listNotices('st_only_morn')).map((n) => n.id), [pinnedNotice.id, 'nt_demo1']);
+
+    // 수정
+    const edited = await api.updateNotice(added.id, { title: '펑셔널 요가 — 매트 준비', target: 'all', pinned: true });
+    eq('제목·대상·고정 수정', [edited.title, edited.target, edited.pinned], ['펑셔널 요가 — 매트 준비', 'all', true]);
+    eq('본문은 그대로', edited.body, '이번 주 펑셔널 요가는 매트를 챙겨 주세요.');
+    eq('대상을 전체로 바꾸면 모두에게', (await api.listNotices('st_only_morn')).length, 3);
+    await throws('없는 공지 수정은 막힘', () => api.updateNotice('nt_none', { title: 'x' }), /공지를 찾을 수/);
+    await throws('수정해도 빈 제목은 막힘', () => api.updateNotice(added.id, { title: '' }), /제목/);
+
+    // 수강생 상세에도 공지가 실립니다
+    const v = await api.getStudent('st_only_morn');
+    eq('getStudent 에 공지 포함', v.notices.length, 3);
+    ok('공지마다 필드가 채워짐', v.notices.every((n) => n.id && n.title && n.body && n.target && n.createdAt));
+
+    // 삭제 — 두 번 지우면 오류, 지운 뒤에는 다시 채우지 않음
+    eq('삭제 성공', await api.deleteNotice(pinnedNotice.id), true);
+    ok('목록에서 사라짐', !(await api.listNotices('st_a')).some((n) => n.id === pinnedNotice.id));
+    await throws('없는 공지 삭제는 막힘', () => api.deleteNotice(pinnedNotice.id), /공지를 찾을 수/);
+
+    const saved = read();
+    saved.notices = [];
+    const again = makeContext({ now: NOW, state: saved });
+    eq('강사가 모두 지우면 빈 상태가 유지됨', again.read().notices, []);
+    eq('빈 상태에서는 회원에게도 안 보임', await again.api.listNotices('st_a'), []);
+
+    // 다시 불러온 뒤에도 고정·최신순 그대로
+    const reloaded = makeContext({ now: NOW, state: saved });
+    await reloaded.api.addNotice({ title: 'A', body: 'a', target: 'all', pinned: false });
+    await reloaded.api.addNotice({ title: 'B', body: 'b', target: 'all', pinned: true });
+    await reloaded.api.addNotice({ title: 'C', body: 'c', target: 'all', pinned: false });
+    const order = (await reloaded.api.listNotices('st_a')).map((n) => n.title);
+    eq('고정 공지가 먼저', order[0], 'B');
+    eq('나머지는 뒤에', order.slice(1).sort(), ['A', 'C']);
+  }
+
   /* ── 결과 ─────────────────────────────────────────────── */
   console.log(`\n${failures.length ? '✗ 실패' : '✓ 통과'} — ${passed}개 확인, ${failures.length}개 실패`);
   if (failures.length) {
