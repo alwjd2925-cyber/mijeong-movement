@@ -41,8 +41,14 @@
   /* 포인트 */
   --butter: #f3ff00;
   --butter-2: #e4f000;
+  --butter-tint: #fdfeed;      /* 선택 카드의 연한 노랑 면 */
+  --butter-line: #d8e600;      /* 선택 카드 테두리 */
+  --butter-line-2: #c5d100;    /* 체크 상자 테두리 */
   --on-butter: #141518;
   --on-butter-soft: rgba(20, 21, 24, 0.8);
+
+  /* 달력 — 수업 없는 날 숫자(흰 바탕에서 5:1) */
+  --ink-50: #6a6d75;
 
   /* 서브 포인트 — 포커스 링 전용 */
   --blue: #136cfc;
@@ -948,14 +954,17 @@ table.track-table tbody th.td-ex {
   border-color: var(--ink);
 }
 
-/* 체크표 — 네모는 채우지 않고(테두리만), 체크에만 #141518 색 */
+/* 체크표 — 노션 체크박스 표처럼 작은 네모.
+   미체크는 투명 바탕 + 깁끈한 네모 테두리, 체크하면 #F3FF00으로 채우고 #141518 체크.
+   크기·테두리 두께가 체크 전후로 같아 칸이 흔들리지 않습니다. */
 .tick {
   display: block;               /* 기준선(baseline) 정렬에서 빼 위치를 고정 */
-  width: 100%;
-  height: 30px;
-  min-height: 30px;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin: 0 auto;
   padding: 0;
-  border: 1.5px solid rgba(20, 21, 24, 0.3);
+  border: 1.5px solid rgba(20, 21, 24, 0.28);
   border-radius: 5px;
   background-color: transparent;
   background-image: none;
@@ -964,7 +973,7 @@ table.track-table tbody th.td-ex {
   background-size: 13px 11px;
   font-size: 12px;
   font-weight: 500;             /* 체크 전/후 동일 */
-  line-height: 27px;            /* 30px - 테두리 3px, 항상 같음 */
+  line-height: 21px;            /* 24px - 테두리 3px, 항상 같음 */
   text-align: center;
   vertical-align: middle;
   color: transparent;           /* ✓ 글자 대신 SVG 체크 */
@@ -977,14 +986,14 @@ table.track-table tbody th.td-ex {
 }
 
 .tick.is-on {
-  border-color: rgba(20, 21, 24, 0.55);
-  background-color: transparent;
+  border-color: var(--butter-line-2);
+  background-color: var(--butter);
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'><path d='M2.2 6.2 5.4 9.4 11.8 2.3' fill='none' stroke='%23141518' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   color: transparent;
 }
 
 .tick.is-on:hover {
-  border-color: var(--ink);
+  border-color: #a8b300;
 }
 
 .tick:disabled {
@@ -1710,11 +1719,14 @@ table.track-table tbody th.td-ex {
   gap: 9px;
   min-height: 54px;
   padding: 10px 11px;
+  border: 1.5px solid var(--line-strong);
   border-radius: var(--radius-sm);
+  background: var(--surface);
   font-size: 11.5px;
   line-height: 1.35;
   color: var(--ink-70);
   white-space: normal;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
 .cls-picks--student .cls-pick input {
@@ -1745,16 +1757,37 @@ table.track-table tbody th.td-ex {
   word-break: keep-all;
 }
 
+/* 선택된 카드 — 진한 옐로 대신 연한 노랑 면 + 선명한 노랑 테두리,
+   체크 아이콘만 #F3FF00 원 + #141518 체크로 강조합니다. (선택 전후 크기 변화 0px) */
 .cls-picks--student .cls-pick:has(input:checked) {
-  background: var(--butter);
-  border-color: var(--butter);
-  color: var(--on-butter);
+  background: var(--butter-tint);
+  border-color: var(--butter-line);
+  color: var(--ink);
   font-weight: 600;
 }
 
 .cls-picks--student .cls-pick:has(input:checked) .pck-mode {
   border-color: rgba(20, 21, 24, 0.4);
-  color: var(--on-butter);
+  color: var(--ink);
+}
+
+/* 선택 카드 안의 동그란 체크 — 미선택은 흐린 ✓, 선택하면 옐로 원 + 진한 ✓ */
+.cls-picks--student .cls-pick input.chk,
+.pass-pick input.chk {
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid rgba(20, 21, 24, 0.24);
+  border-radius: 50%;
+  background-color: transparent;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'><path d='M2.2 6.2 5.4 9.4 11.8 2.3' fill='none' stroke='%23141518' stroke-opacity='.34' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-size: 11px 9px;
+}
+
+.cls-picks--student .cls-pick input.chk:checked,
+.pass-pick input.chk:checked {
+  border-color: var(--butter-line-2);
+  background-color: var(--butter);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'><path d='M2.2 6.2 5.4 9.4 11.8 2.3' fill='none' stroke='%23141518' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
 
 .reg-pass {
@@ -1840,7 +1873,7 @@ table.track-table tbody th.td-ex {
   align-items: center;
   gap: 9px;
   padding: 9px 11px;
-  border: 1px solid var(--line-strong);
+  border: 1.5px solid var(--line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
   font-size: 11.5px;
@@ -1892,23 +1925,24 @@ table.track-table tbody th.td-ex {
   color: var(--ink-45);
 }
 
+/* 선택된 수강권 카드 — 연한 노랑 면 + 노랑 테두리, 체크 아이콘만 진하게 */
 .pass-pick:has(input:checked) {
-  background: var(--butter);
-  border-color: var(--butter);
-  color: var(--on-butter);
+  background: var(--butter-tint);
+  border-color: var(--butter-line);
+  color: var(--ink);
 }
 
 .pass-pick:has(input:checked) .pass-name {
-  color: var(--on-butter);
+  color: var(--ink);
   font-weight: 600;
 }
 
 .pass-pick:has(input:checked) .pass-amt {
-  color: var(--on-butter);
+  color: var(--ink);
 }
 
 .pass-pick:has(input:checked) .pass-meta {
-  color: var(--on-butter-soft);
+  color: var(--ink-45);
 }
 
 /* 이번 선택에서 빠지는 수강권 안내 */
@@ -2163,6 +2197,340 @@ table.track-table tbody th.td-ex {
   letter-spacing: 0.1em;
   color: var(--ink-45);
   text-transform: uppercase;
+}
+
+/* ── 달력 (예약 스케줄 · 온라인 출석) ───────────────────── */
+/* 달이 바뀌어도 카드 높이가 흔들리지 않도록 6주 높이를 미리 잡고,
+   칸은 모두 같은 크기(34px)입니다. 숫자는 모두 흰 바탕에서 4.5:1 이상. */
+.cal-card {
+  margin: 14px 0 6px;
+  padding: 11px 12px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+}
+
+.cal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 7px;
+}
+
+.cal-title {
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-title span {
+  margin-left: 6px;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+}
+
+.cal-nav {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1;
+  transition: background-color 0.14s ease, border-color 0.14s ease;
+}
+
+.cal-nav:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--ink-25);
+}
+
+.cal-nav:disabled {
+  color: var(--ink-50);
+  border-color: var(--line);
+  cursor: default;
+}
+
+.cal-dow,
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.cal-dow {
+  padding-bottom: 3px;
+}
+
+.cal-dow span {
+  text-align: center;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-45);
+}
+
+.cal-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.cal-cell.is-blank {
+  cursor: default;
+}
+
+/* 수업이 있는 날만 하얀 칩으로 띄웁니다 */
+.cal-cell.has-class {
+  background: var(--surface);
+  box-shadow: 0 1px 1px rgba(20, 21, 24, 0.04);
+}
+
+.cal-num {
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ink-50);
+}
+
+.cal-cell.has-class .cal-num {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.cal-mark {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(20, 21, 24, 0.34);
+}
+
+.cal-cell.has-class:hover:not(.is-booked):not(.is-selected) {
+  background: var(--surface-3);
+}
+
+.cal-cell.is-today:not(.is-booked):not(.is-selected) {
+  box-shadow: inset 0 0 0 2px rgba(20, 21, 24, 0.5);
+}
+
+/* 내가 예약 완료한 날 — #F3FF00 하이라이트 */
+.cal-cell.is-booked {
+  background: var(--butter);
+  box-shadow: none;
+}
+
+.cal-cell.is-booked .cal-num {
+  color: var(--on-butter);
+  font-weight: 700;
+}
+
+.cal-cell.is-booked .cal-mark {
+  background: var(--on-butter);
+}
+
+/* 고른 날 — #136CFC 블루 배지 */
+.cal-cell.is-selected {
+  background: var(--blue);
+  box-shadow: none;
+}
+
+.cal-cell.is-selected .cal-num {
+  color: var(--on-blue);
+  font-weight: 700;
+}
+
+.cal-cell.is-selected .cal-mark {
+  background: var(--on-blue);
+}
+
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 11px;
+  margin: 8px 0 0;
+  padding: 7px 2px 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--ink-45);
+}
+
+.cal-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cal-key {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--surface);
+}
+
+.cal-key.is-dot {
+  width: 5px;
+  height: 5px;
+  margin: 0 2px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(20, 21, 24, 0.34);
+}
+
+.cal-key.is-booked {
+  background: var(--butter);
+  border-color: var(--butter-line-2);
+}
+
+.cal-key.is-selected {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+/* 고른 날만 보기 — 해제 칩 */
+.cal-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.cal-filter b {
+  font-weight: 700;
+}
+
+.cal-clear {
+  flex: none;
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1.5px solid var(--butter);
+}
+
+.cal-clear:hover {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+/* ── 온라인 이번 달 출석 달력 (미니) ─────────────────────── */
+.cal-mini {
+  margin: 10px 0 2px;
+  padding: 10px 11px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.cal-mini-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 5px;
+}
+
+.cal-mini-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-mini-title span {
+  margin-left: 5px;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+}
+
+.cal-mini-count {
+  font-size: 10px;
+  color: var(--ink-45);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-mini-count b {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.cal-mini .cal-cell {
+  height: 27px;
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.cal-mini .cal-cell.is-blank {
+  background: transparent;
+}
+
+.cal-mini .cal-num {
+  font-size: 10px;
+}
+
+.cal-mini .cal-cell.is-today:not(.is-booked):not(.is-selected) {
+  box-shadow: inset 0 0 0 1.5px rgba(20, 21, 24, 0.36);
+}
+
+/* 운동한 날 — #F3FF00 하이라이트 */
+.cal-mini .cal-cell.is-on {
+  background: var(--butter);
+  box-shadow: none;
+}
+
+.cal-mini .cal-cell.is-on .cal-num {
+  color: var(--on-butter);
+  font-weight: 700;
+}
+
+.cal-mini .cal-cell.is-future .cal-num {
+  color: var(--ink-50);
+}
+
+.cal-mini .cal-cell:disabled {
+  background: transparent;
+  cursor: default;
+}
+
+.cal-mini .cal-cell:disabled .cal-num {
+  color: var(--ink-50);
 }
 
 .srow {
