@@ -1434,6 +1434,9 @@ table.track-table tbody th.td-ex {
 
 .pass-remain {
   flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
   font-size: 11px;
   font-weight: 500;
   color: var(--on-dark-45);
@@ -1446,9 +1449,7 @@ table.track-table tbody th.td-ex {
   line-height: 1;
   letter-spacing: -0.04em;
   color: var(--on-dark);
-  margin-right: 3px;
   font-variant-numeric: tabular-nums;
-  vertical-align: -3px;
 }
 
 .dots {
@@ -2213,6 +2214,8 @@ table.track-table tbody th.td-ex {
   --ink-70: var(--on-dark-70);
   --ink-45: var(--on-dark-45);
   --ink-25: rgba(255, 255, 255, 0.32);
+  --surface-2: rgba(255, 255, 255, 0.1);
+  --surface-3: rgba(255, 255, 255, 0.16);
   --line: var(--dark-line);
   --line-strong: var(--dark-line-strong);
   background: var(--dark);
@@ -2384,9 +2387,14 @@ table.track-table tbody th.td-ex {
   font-weight: 600;
   letter-spacing: 0.03em;
   border-bottom: 1px solid currentColor;
-  color: var(--butter);
+  color: var(--ink);
   padding-bottom: 2px;
   transition: opacity 0.18s, gap 0.18s;
+}
+
+/* 다크 카드 안에서는 포인트 색 */
+.warm-block .btn-video {
+  color: var(--butter);
 }
 
 .btn-video:hover {
