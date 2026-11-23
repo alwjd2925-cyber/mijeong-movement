@@ -1485,6 +1485,7 @@ table.track-table tbody th.td-ex {
   font-size: 12px;
   font-weight: 620;
   letter-spacing: -0.01em;
+  line-height: 15px;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1493,6 +1494,7 @@ table.track-table tbody th.td-ex {
 .pass-amt.is-unknown {
   font-size: 10px;
   font-weight: 500;
+  line-height: 15px;
   color: var(--ink-45);
 }
 
