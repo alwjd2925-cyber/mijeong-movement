@@ -175,9 +175,12 @@
     return '별도 안내';
   }
 
-  /* 수강권 카드에 붙는 금액 — 지금 고른 오프라인 수업 기준 (아직 안 골랐으면 전체 기준) */
+  /* 수강권 카드에 붙는 금액 — 지금 고른 오프라인 수업 기준.
+     수업을 아직 고르지 않았으면 수업마다 금액이 달라서 숫자를 쓰지 않습니다. */
   function passAmtText(classes, passType) {
-    const amount = offlinePassPrice(classes, passType);
+    const list = (classes || []).filter((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1);
+    if (!list.length) return { amount: null, text: '선택 전' };
+    const amount = offlinePassPrice(list, passType);
     return { amount, text: amount == null ? PRICES.unknownLabel : won(amount) };
   }
 
@@ -534,7 +537,7 @@
         <p class="reg-pass-label">수강권 <span>오프라인 수업을 고르면 필요해요</span></p>
         <div class="pass-picks" role="group" aria-label="수강권 선택 · 하나만">
           ${passTypesAll().map((n) => {
-            const amount = passAmtText(hasOffline ? picked : CLASSES.map((c) => c.id), n);
+            const amount = passAmtText(hasOffline ? picked : [], n);
             const usable = !hasOffline || availablePassTypes(picked).indexOf(n) !== -1;
             return `
             <label class="pass-pick" data-pass-opt="${n}"${usable ? '' : ' hidden'}>
@@ -620,7 +623,7 @@
 
     /* 수강권 카드 금액 — 지금 고른 오프라인 수업 기준 */
     form.querySelectorAll('[data-pass-amt]').forEach((el) => {
-      const info = passAmtText(hasOffline ? picked : CLASSES.map((c) => c.id), el.dataset.passAmt);
+      const info = passAmtText(hasOffline ? picked : [], el.dataset.passAmt);
       el.textContent = info.text;
       el.classList.toggle('is-unknown', info.amount == null);
     });
