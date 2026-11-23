@@ -58,6 +58,9 @@
   `CLASSES[].mode`는 `offline`(스튜디오) / `online`(온라인). 온라인 클래스는 `slots: []`로 두고
   `when` 문구로 안내합니다(예약 시간표에는 나오지 않음).
 - **수업 소개 문구**: `CLASSES[].blurb` / `.note` (현재 문구는 초안입니다).
+- **수업 카드 사진**: `CLASSES[].poster`에 이미지 경로를 넣으면 그 수업 카드가 SVG 일러스트 대신 사진으로 나갑니다
+  (`posterAlt`는 대체 텍스트). 지금은 모닝 모빌리티 포스터 `assets/morning-mobility.jpg`(4:5)만 들어 있고,
+  카드 안에서 원본 비율 그대로(`object-fit: contain`) 보여 위아래·좌우가 잘리지 않습니다.
 - **시퀀스**: `WARMUP`, `SEQUENCES.beginner`, `SEQUENCES.intermediate`의 `name` · `dose` · `cue` · `tags`.
 - **영상**: 각 동작의 `video.youtubeId`에 유튜브 ID(`dQw4w9WgXcQ` 같은 11자리)를 넣거나,
   `video.url`에 주소(`https://youtu.be/...`)를 넣으면 모달에서 바로 재생됩니다.
