@@ -1416,7 +1416,7 @@ table.track-table tbody th.td-ex {
   padding: 8px 10px;
   border: 1px solid var(--line-strong);
   border-radius: 4px;
-  background: var(--paper);
+  background: #fff;
   font-size: 11.5px;
   color: var(--ink-70);
   cursor: pointer;
@@ -2468,7 +2468,7 @@ input.chk {
 }
 
 input.chk:checked {
-  border-color: var(--butter);
+  border-color: var(--butter-2);
   background-color: var(--butter);
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 10'><path d='M2.4 5.3 4.9 7.9 9.8 2.1' fill='none' stroke='%23181818' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
