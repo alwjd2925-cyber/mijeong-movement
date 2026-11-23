@@ -52,6 +52,8 @@
     onlineProgram: 'morning', // 온라인 클래스 탭
     onlineWeek: null,   // null = 이번 주, 그 외 'YYYY-MM-DD'(월요일) 주 시작일
     onlinePicked: false, // 수강생이 탭/노트 카드로 프로그램을 직접 골랐는지
+    calMonth: null,     // 예약 달력에서 보고 있는 달 'YYYY-MM'
+    calDay: null,       // 예약 달력에서 고른 날 'YYYY-MM-DD' (null = 전체 보기)
     access: null,       // 로그인한 수강생이 볼 수 있는 범위
     regOpen: false,     // 등록 신청 폼 열림
     regType: 'register',
@@ -821,6 +823,105 @@
       </div>`;
   }
 
+  /* ── 달력 ───────────────────────────────────────────── */
+  const DOW_MON = ['월', '화', '수', '목', '금', '토', '일'];
+  const monthKeyOf = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`;
+
+  /* 'YYYY-MM-DD' → 그 날 Date(시각 0시) */
+  function dayFromKey(key) {
+    const [y, m, d] = String(key).split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  /* 그 날이 속한 주(월요일) — 온라인 체크 기록의 주차 키와 같은 규칙 */
+  function weekKeyOfDay(date) {
+    const back = (date.getDay() + 6) % 7;
+    return localKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - back));
+  }
+
+  function monthStartOffset(year, mon) {
+    return (new Date(year, mon - 1, 1).getDay() + 6) % 7; /* 월요일 시작 */
+  }
+
+  function legendHTML(items) {
+    return `<ul class="cal-legend">${items.map((it) =>
+      `<li><span class="cal-key ${it.cls}" aria-hidden="true"></span>${esc(it.text)}</li>`).join('')}</ul>`;
+  }
+
+  /* 달 이동 — 수업이 있는 달 안에서만 움직입니다 */
+  let CAL_MONTHS = [];
+
+  function shiftCalMonth(dir) {
+    const at = CAL_MONTHS.indexOf(UI.calMonth);
+    const next = at + dir;
+    if (at === -1 || next < 0 || next >= CAL_MONTHS.length) return;
+    UI.calMonth = CAL_MONTHS[next];
+    UI.calDay = null; /* 달을 옮기면 날짜 선택은 풀립니다 */
+  }
+
+  /* 예약 달력 — 수업 있는 날은 점, 내가 예약한 날은 옐로, 고른 날은 블루 */
+  function bookingCalHTML(v, sessions) {
+    if (!sessions.length) return '';
+
+    const info = new Map();
+    sessions.forEach((session) => {
+      const key = localKey(new Date(session.startISO));
+      const cur = info.get(key) || { count: 0, booked: false };
+      cur.count += 1;
+      if (v && (v.bookings || []).some((b) => b.sessionId === session.id)) cur.booked = true;
+      info.set(key, cur);
+    });
+
+    CAL_MONTHS = Array.from(new Set(sessions.map((s) => monthKeyOf(new Date(s.startISO))))).sort();
+    const thisMonth = monthKeyOf(new Date());
+    if (!UI.calMonth || CAL_MONTHS.indexOf(UI.calMonth) === -1) {
+      /* 처음에는 이번 달 — 이번 달에 수업이 없으면 가장 가까운 달부터 */
+      UI.calMonth = CAL_MONTHS.indexOf(thisMonth) !== -1 ? thisMonth : CAL_MONTHS[0];
+    }
+    const at = CAL_MONTHS.indexOf(UI.calMonth);
+    const [year, mon] = UI.calMonth.split('-').map(Number);
+    const last = new Date(year, mon, 0).getDate();
+    const lead = monthStartOffset(year, mon);
+    const todayKey = localKey(new Date());
+
+    let cells = '';
+    for (let i = 0; i < lead; i += 1) cells += '<span class="cal-cell is-blank" aria-hidden="true"></span>';
+    for (let d = 1; d <= last; d += 1) {
+      const key = `${UI.calMonth}-${pad2(d)}`;
+      const day = info.get(key);
+      const selected = UI.calDay === key;
+      if (!day) {
+        cells += `<span class="cal-cell is-blank${key === todayKey ? ' is-today' : ''}" aria-hidden="true"><span class="cal-num">${d}</span></span>`;
+        continue;
+      }
+      const cls = ['cal-cell', 'has-class'];
+      if (day.booked) cls.push('is-booked');
+      if (selected) cls.push('is-selected');
+      if (!selected && key === todayKey) cls.push('is-today');
+      const label = `${mon}월 ${d}일 · 수업 ${day.count}개${day.booked ? ' · 예약 완료' : ''}`;
+      cells += `<button class="${cls.join(' ')}" type="button" data-cal-day="${key}"
+        aria-pressed="${selected ? 'true' : 'false'}" aria-label="${esc(label)}">
+        <span class="cal-num">${d}</span><span class="cal-mark" aria-hidden="true"></span>
+      </button>`;
+    }
+
+    return `
+      <div class="cal-card" aria-label="예약 달력">
+        <div class="cal-head">
+          <button class="cal-nav" type="button" data-cal-nav="-1" aria-label="이전 달"${at <= 0 ? ' disabled' : ''}>‹</button>
+          <p class="cal-title">${year}년 ${mon}월 <span>schedule</span></p>
+          <button class="cal-nav" type="button" data-cal-nav="1" aria-label="다음 달"${at >= CAL_MONTHS.length - 1 ? ' disabled' : ''}>›</button>
+        </div>
+        <div class="cal-dow" aria-hidden="true">${DOW_MON.map((d) => `<span>${d}</span>`).join('')}</div>
+        <div class="cal-grid">${cells}</div>
+        ${legendHTML([
+          { cls: 'is-dot', text: '수업 있는 날' },
+          { cls: 'is-booked', text: '예약 완료' },
+          { cls: 'is-selected', text: '고른 날' },
+        ])}
+      </div>`;
+  }
+
   function scheduleHTML(v, sessions) {
     const groups = new Map();
     sessions.forEach((session) => {
@@ -834,7 +935,12 @@
       return '<p class="admin-empty">예약 가능한 수업이 없습니다.</p>';
     }
 
-    const dayBlocks = keys.map((key) => {
+    /* 고른 날이 그 달에 없으면(다른 달 · 새 날짜) 전체 보기로 돌립니다 */
+    if (UI.calDay && keys.indexOf(UI.calDay) === -1) UI.calDay = null;
+    const shownKeys = UI.calDay ? [UI.calDay] : keys;
+    const shownCount = shownKeys.reduce((n, key) => n + groups.get(key).length, 0);
+
+    const dayBlocks = shownKeys.map((key) => {
       const list = groups.get(key);
       const date = new Date(list[0].startISO);
       const tag = relativeTag(date);
@@ -850,10 +956,14 @@
 
     return `
       <div class="sched">
+        ${bookingCalHTML(v, sessions)}
         <div class="sched-head">
           <h4>예약 가능한 수업</h4>
-          <span>${keys.length}일 · ${sessions.length}개 수업</span>
+          <span>${shownKeys.length}일 · ${shownCount}개 수업</span>
         </div>
+        ${UI.calDay
+        ? `<div class="cal-filter"><b>${esc(midDate(dayFromKey(UI.calDay)))}</b>만 보는 중 <button class="cal-clear" type="button" data-cal-clear>전체 보기</button></div>`
+        : ''}
         ${dayBlocks}
       </div>`;
   }
@@ -918,6 +1028,28 @@
     if (!area) return;
 
     area.addEventListener('click', async (event) => {
+      /* 달력 — 이전/다음 달, 날짜로 거르가, 전체 보기 */
+      const calNav = event.target.closest('[data-cal-nav]');
+      if (calNav) {
+        shiftCalMonth(Number(calNav.dataset.calNav) || 0);
+        await renderBooking();
+        return;
+      }
+
+      const calDay = event.target.closest('[data-cal-day]');
+      if (calDay) {
+        const key = calDay.dataset.calDay;
+        UI.calDay = UI.calDay === key ? null : key; /* 다시 누르면 전체 보기 */
+        await renderBooking();
+        return;
+      }
+
+      if (event.target.closest('[data-cal-clear]')) {
+        UI.calDay = null;
+        await renderBooking();
+        return;
+      }
+
       const bookBtn = event.target.closest('[data-book]');
       if (bookBtn && UI.studentId) {
         const sessionId = bookBtn.dataset.book;
@@ -978,6 +1110,8 @@
         UI.regClasses = [];
         UI.regPasses = {};
         UI.regLivePasses = {};
+        UI.calMonth = null;
+        UI.calDay = null;
         saveCurrent();
         await renderBooking();
         toast('로그아웃했어요.');
@@ -1066,6 +1200,8 @@
         UI.regClasses = [];
         UI.regPasses = {};
         UI.regLivePasses = {};
+        UI.calMonth = null;
+        UI.calDay = null;
         saveCurrent();
         await renderBooking();
       });
@@ -1218,6 +1354,74 @@
       </div>`;
   }
 
+  /* ── 이번 달 출석 달력 ───────────────────────────────── */
+  /* 그 달의 날짜를 주차 기록(요일)과 맞춰 보며, 한 번이라도 체크한 날을 모음 */
+  function monthMarks(program, records, month) {
+    const [year, mon] = month.split('-').map(Number);
+    const last = new Date(year, mon, 0).getDate();
+    const marks = new Map();
+    for (let d = 1; d <= last; d += 1) {
+      const date = new Date(year, mon - 1, d);
+      const bucket = records && records[program.id] ? records[program.id][weekKeyOfDay(date)] : null;
+      if (!bucket || !bucket.checks) continue;
+      const idx = (date.getDay() + 6) % 7;
+      let hits = 0;
+      Object.keys(bucket.checks).forEach((id) => {
+        if ((bucket.checks[id] || [])[idx] === 1) hits += 1;
+      });
+      if (hits) marks.set(d, hits);
+    }
+    return marks;
+  }
+
+  /* 주간 체크표 위에 붙는 미니 달력 — 운동한 날이 #F3FF00으로 차오릅니다 */
+  function trackCalHTML(program, records) {
+    const now = new Date();
+    const month = monthKeyOf(now);
+    const [year, mon] = month.split('-').map(Number);
+    const marks = monthMarks(program, records, month);
+    const last = new Date(year, mon, 0).getDate();
+    const lead = monthStartOffset(year, mon);
+    const today = now.getDate();
+    const total = Array.from(marks.values()).reduce((a, b) => a + b, 0);
+
+    let cells = '';
+    for (let i = 0; i < lead; i += 1) cells += '<span class="cal-cell is-blank" aria-hidden="true"></span>';
+    for (let d = 1; d <= last; d += 1) {
+      const date = new Date(year, mon - 1, d);
+      const hits = marks.get(d) || 0;
+      const cls = ['cal-cell'];
+      if (hits) cls.push('is-on');
+      if (d === today) cls.push('is-today');
+      if (d > today) cls.push('is-future');
+      const label = `${mon}월 ${d}일 · ${hits ? `체크 ${hits}회` : '기록 없음'} · 이 주 열기`;
+      cells += `<button class="${cls.join(' ')}" type="button" data-cal-open="${esc(weekKeyOfDay(date))}"
+        aria-label="${esc(label)}"><span class="cal-num">${d}</span></button>`;
+    }
+
+    return `
+      <div class="cal-mini" id="trackCal" aria-label="${mon}월 출석 달력">
+        <div class="cal-mini-head">
+          <p class="cal-mini-title">${year}년 ${mon}월 출석 <span>this month</span></p>
+          <p class="cal-mini-count">${marks.size ? `<b>${marks.size}</b>일 · ${total}회 체크` : '아직 기록 없음'}</p>
+        </div>
+        <div class="cal-dow" aria-hidden="true">${DOW_MON.map((d) => `<span>${d}</span>`).join('')}</div>
+        <div class="cal-grid">${cells}</div>
+      </div>`;
+  }
+
+  /* 체크를 바꾸면 달력도 그 자리에서 다시 그립니다 (포커스·스크롤은 그대로) */
+  async function refreshTrackCal() {
+    const box = $('#trackCal');
+    const program = ONLINE[UI.onlineProgram];
+    if (!box || !program || !UI.studentId) return;
+    const records = await api.getOnline(UI.studentId);
+    const holder = document.createElement('div');
+    holder.innerHTML = trackCalHTML(program, records);
+    const fresh = holder.firstElementChild;
+    if (fresh) box.replaceWith(fresh);
+  }
+
   function noteSavedText(record) {
     if (!record || !record.updatedAt) return '아직 저장된 노트가 없어요';
     const d = new Date(record.updatedAt);
@@ -1294,6 +1498,7 @@
       </div>
       <p class="track-sub">${esc(program.sub)}</p>
       <p class="track-sum"><b>${checked}</b> / ${total} 동작 · 이 주 ${count}회 체크 · <span class="track-who">${esc(student.name)}</span></p>
+      ${trackCalHTML(program, records)}
       <div class="track-body">
         ${trackTableHTML(program, record, false)}
         ${trackNoteHTML(program, record, false)}
@@ -1418,6 +1623,15 @@
         return;
       }
 
+      /* 달력에서 날짜 → 그 주차로 이동 */
+      const calDay = event.target.closest('[data-cal-open]');
+      if (calDay) {
+        UI.onlineWeek = calDay.dataset.calOpen || null;
+        UI.onlinePicked = true;
+        await renderOnline();
+        return;
+      }
+
       const tick = event.target.closest('[data-tick]');
       if (tick && UI.studentId) {
         if (tick.dataset.busy === '1') return;
@@ -1433,6 +1647,7 @@
           tick.setAttribute('aria-pressed', on ? 'true' : 'false');
           tick.textContent = on ? '✓' : '';
           refreshTrackSummary(rec);
+          await refreshTrackCal();
           await refreshNoteLog();
         } catch (err) {
           toast(err.message || '체크를 저장하지 못했어요.', true);
