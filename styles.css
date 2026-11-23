@@ -3807,8 +3807,8 @@ input.chk:focus-visible {
 
   .head-nav a {
     font-size: 9.5px;
-    letter-spacing: 0.02em;
-    padding: 6px 6px;
+    letter-spacing: 0;
+    padding: 6px 4px;
   }
 
   .note-card {
