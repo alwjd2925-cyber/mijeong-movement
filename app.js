@@ -358,12 +358,17 @@
     if (!grid) return;
     grid.innerHTML = CLASSES.map((cls) => {
       const online = cls.mode === 'online';
-      return `
-      <article class="class-card${online ? ' is-online' : ''}">
-        <div class="class-art">
+      const art = cls.poster
+        ? `<div class="class-art has-poster">
+          <img class="class-photo" src="${esc(cls.poster)}" alt="${esc(cls.posterAlt || cls.name + ' 포스터')}" width="1080" height="1350" decoding="async">
+        </div>`
+        : `<div class="class-art">
           <svg class="il" aria-hidden="true"><use href="#il-${esc(cls.icon)}"></use></svg>
           <svg class="il-dots" aria-hidden="true"><use href="#il-dots"></use></svg>
-        </div>
+        </div>`;
+      return `
+      <article class="class-card${online ? ' is-online' : ''}">
+        ${art}
         <div class="class-head">
           <div>
             <h3>${esc(cls.name)}</h3>

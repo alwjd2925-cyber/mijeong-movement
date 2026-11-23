@@ -584,6 +584,27 @@ ol {
   height: 124px;
 }
 
+/* 모닝 모빌리티 — 포스터 사진
+   원본 4:5(1080×1350) 비율 그대로 두어 위아래/좌우가 잘리지 않습니다. */
+.class-card .class-art.has-poster {
+  display: block;
+  height: auto;
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto;
+  background: none;
+}
+
+.class-art.has-poster .class-photo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 5;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  background: var(--paper-2);
+}
+
 .class-art .il-dots {
   position: absolute;
   top: 12px;
@@ -3313,6 +3334,10 @@ input.chk:focus-visible {
   .class-art .il {
     width: 142px;
     height: 142px;
+  }
+
+  .class-card .class-art.has-poster {
+    max-width: 300px;
   }
 
   .booking-panel {
