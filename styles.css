@@ -849,9 +849,9 @@ table.track-table {
 
 table.track-table thead th {
   padding: 0 0 8px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   color: var(--on-dark-45);
   text-align: center;
   border-bottom: 1px solid var(--dark-line);
