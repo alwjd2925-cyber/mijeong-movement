@@ -88,13 +88,20 @@ const DAY = 86400000;
 function baseStudents(now) {
   const iso = (ms) => new Date(ms).toISOString();
   return [
-    { id: 'st_a', name: '이서연', code: 'MJ-2048', classes: ['handstand', 'functional', 'morning', 'coaching'], pass: { type: 4, total: 4, used: 1, issuedAt: iso(now - 10 * DAY), expiresAt: iso(now + 30 * DAY) }, createdAt: iso(now - 30 * DAY) },
-    { id: 'st_sold', name: '박지우', code: 'MJ-0812', classes: ['handstand'], pass: { type: 8, total: 8, used: 8, issuedAt: iso(now - 60 * DAY), expiresAt: iso(now + 10 * DAY) }, createdAt: iso(now - 60 * DAY) },
-    { id: 'st_exp', name: '최만료', code: 'MJ-0001', classes: ['handstand'], pass: { type: 4, total: 4, used: 1, issuedAt: iso(now - 90 * DAY), expiresAt: iso(now - 1 * DAY) }, createdAt: iso(now - 90 * DAY) },
-    { id: 'st_new', name: '김하늘', code: 'MJ-1024', classes: [], pass: null, createdAt: iso(now - 1 * DAY) },
+    {
+      id: 'st_a', name: '이서연', code: 'MJ-2048', classes: ['handstand', 'functional', 'morning', 'coaching'],
+      passes: {
+        handstand: { type: 4, total: 4, used: 1, issuedAt: iso(now - 10 * DAY), expiresAt: iso(now + 30 * DAY) },
+        functional: { type: 4, total: 4, used: 0, issuedAt: iso(now - 10 * DAY), expiresAt: iso(now + 30 * DAY) },
+      },
+      createdAt: iso(now - 30 * DAY),
+    },
+    { id: 'st_sold', name: '박지우', code: 'MJ-0812', classes: ['handstand'], passes: { handstand: { type: 8, total: 8, used: 8, issuedAt: iso(now - 60 * DAY), expiresAt: iso(now + 10 * DAY) } }, createdAt: iso(now - 60 * DAY) },
+    { id: 'st_exp', name: '최만료', code: 'MJ-0001', classes: ['handstand'], passes: { handstand: { type: 4, total: 4, used: 1, issuedAt: iso(now - 90 * DAY), expiresAt: iso(now - 1 * DAY) } }, createdAt: iso(now - 90 * DAY) },
+    { id: 'st_new', name: '김하늘', code: 'MJ-1024', classes: [], passes: {}, createdAt: iso(now - 1 * DAY) },
     /* 오프라인만 듣는 수강생 · 모닝만 듣는 수강생 (접근 제어 확인용) */
-    { id: 'st_only_off', name: '한오프', code: 'MJ-3001', classes: ['functional'], pass: { type: 4, total: 4, used: 0, issuedAt: iso(now - 3 * DAY), expiresAt: iso(now + 57 * DAY) }, createdAt: iso(now - 3 * DAY) },
-    { id: 'st_only_morn', name: '남모닝', code: 'MJ-3002', classes: ['morning'], pass: null, createdAt: iso(now - 4 * DAY) },
+    { id: 'st_only_off', name: '한오프', code: 'MJ-3001', classes: ['functional'], passes: { functional: { type: 4, total: 4, used: 0, issuedAt: iso(now - 3 * DAY), expiresAt: iso(now + 57 * DAY) } }, createdAt: iso(now - 3 * DAY) },
+    { id: 'st_only_morn', name: '남모닝', code: 'MJ-3002', classes: ['morning'], passes: {}, createdAt: iso(now - 4 * DAY) },
   ];
 }
 
@@ -131,7 +138,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
 
     const saved = read();
     eq('저장된 예약에 강사 표시', saved.bookings[0].by, 'instructor');
-    eq('저장된 used', saved.students.find((s) => s.id === 'st_a').pass.used, 2);
+    eq('저장된 used', saved.students.find((s) => s.id === 'st_a').passes.handstand.used, 2);
   }
 
   /* ────────────────────────────────────────────────────────
@@ -166,7 +173,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     // 수강권 없음
     {
       const { api } = makeContext({ now: NOW, state: baseState(NOW) });
-      await throws('수강권 없는 수강생은 막힘', () => api.adminBook('st_new', sid), /수강권/);
+      await throws('수강권 없는 수강생은 막힘', () => api.adminBook('st_new', sid), /수강 중인 수업|수강권/);
     }
 
     // 이미 시작한 수업 (13:40 기준 오늘 12:00 수업은 지난 뒤이므로 목록에 없음 → 14:00 수업을 14:30 시각으로)
@@ -189,7 +196,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     })();
 
     const state = baseState(NOW, [{ id: 'bk_late', studentId: 'st_a', sessionId: sid, createdAt: new Date(NOW - 2 * DAY).toISOString() }]);
-    state.students[0].pass.used = 2; // 예약 1건 포함 2회 사용
+    state.students[0].passes.handstand.used = 2; // 예약 1건 포함 2회 사용
     const { api, read } = makeContext({ now: NOW, state });
 
     const v = await api.getStudent('st_a');
@@ -202,7 +209,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     eq('사용 1회로 복구', after.pass.used, 1);
     eq('예약 목록 비움', after.bookings.length, 0);
     eq('저장소에서도 삭제', read().bookings.length, 0);
-    eq('저장된 used', read().students.find((s) => s.id === 'st_a').pass.used, 1);
+    eq('저장된 used', read().students.find((s) => s.id === 'st_a').passes.handstand.used, 1);
   }
 
   /* ────────────────────────────────────────────────────────
@@ -218,7 +225,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     // 마감 전: 수강생 취소도 되고, 강사 취소도 같은 결과
     {
       const state = baseState(NOW, [{ id: 'bk_ok', studentId: 'st_a', sessionId: sid, createdAt: new Date(NOW).toISOString() }]);
-      state.students[0].pass.used = 2;
+      state.students[0].passes.handstand.used = 2;
       const { api } = makeContext({ now: NOW, state });
       const after = await api.adminCancel('bk_ok');
       eq('마감 전 강사 취소도 복구', after.pass.remaining, 3);
@@ -227,7 +234,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     // used 0 하한
     {
       const state = baseState(NOW, [{ id: 'bk_zero', studentId: 'st_a', sessionId: sid, createdAt: new Date(NOW).toISOString() }]);
-      state.students[0].pass.used = 0;
+      state.students[0].passes.handstand.used = 0;
       const { api } = makeContext({ now: NOW, state });
       const after = await api.adminCancel('bk_zero');
       eq('used는 0 아래로 내려가지 않음', after.pass.used, 0);
@@ -250,7 +257,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
       return sessionId(api, { y: 2026, m: 11, d: 25, hh: 14, mm: 0 });
     })();
     const state = baseState(NOW, [{ id: 'bk_x', studentId: 'st_a', sessionId: sid, by: 'instructor', createdAt: new Date(NOW).toISOString() }]);
-    state.students[0].pass.used = 2;
+    state.students[0].passes.handstand.used = 2;
     const { api } = makeContext({ now: NOW, state });
 
     const data = await api.adminData();
@@ -395,7 +402,8 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     const created = await api.adminRegister({ name: '문하람', code: 'mj-7700', classes: ['morning', 'coaching'], passType: '4' });
     eq('등록: 코드는 대문자로', created.code, 'MJ-7700');
     eq('등록: 수업 2개', created.classes, ['morning', 'coaching']);
-    eq('등록: 수강권 부여', created.pass.total, 4);
+    eq('온라인만 등록하면 수강권 없음', created.pass, null);
+    eq('온라인만 등록하면 수강권 칸도 비어 있음', created.passes, {});
     const logged = await api.login({ name: '문하람', code: 'MJ-7700' });
     eq('등록한 회원 로그인', logged.id, created.id);
 
@@ -408,12 +416,12 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     await throws('짧은 코드 거부', () => api.adminRegister({ name: '다른사람', code: 'x', classes: [] }), /수강 코드/);
     await throws('이름 없는 등록 거부', () => api.adminRegister({ name: '  ', code: 'MJ-9999', classes: [] }), /이름/);
 
-    await api.request('st_new', 'register', ['morning', 'handstand']);
+    await api.request('st_new', 'register', ['morning', 'handstand'], { passType: 8 });
     const data = await api.adminData();
     eq('요청에 희망 수업 담김', data.pending[0].classes, ['handstand', 'morning']);
     const approved = await api.approveRequest(data.pending[0].id, '8');
     eq('승인 시 수업이 열림', approved.classes, ['handstand', 'morning']);
-    eq('승인 시 수강권', approved.pass.total, 8);
+    eq('승인 시 핸드스탠드 수강권', approved.passes.handstand.total, 8);
     ok('강사 목록에 수업 포함', data.students.find((s) => s.id === 'st_a').classes.length === 4);
     eq('강사 목록에 수업 로스터', data.roster.map((r) => r.id), ['handstand', 'functional', 'morning', 'coaching']);
   }
@@ -499,18 +507,18 @@ async function sessionId(api, { y, m, d, hh, mm }) {
       const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
       const asked = await api.request('st_new', 'register', ['functional', 'morning'], { passType: 8 });
       eq('신청서에 두 수업', asked.pending.classes, ['functional', 'morning']);
-      eq('희망 수강권 저장', asked.pending.passType, 8);
+      eq('희망 수강권 저장', asked.pending.passTypes, { functional: 8 });
 
       const data = await api.adminData();
       eq('강사 목록 신청 수업 2개', data.pending[0].classes, ['functional', 'morning']);
       eq('오프라인 수업 포함', data.pending[0].offline, 1);
-      eq('희망 수강권 전달', data.pending[0].passType, 8);
+      eq('희망 수강권 전달', data.pending[0].passTypes, { functional: 8 });
 
       const v = await api.approveRequest(data.pending[0].id, '8');
       eq('승인하면 두 수업 모두 열림', v.classes, ['functional', 'morning']);
       eq('오프라인/온라인 접근 함께 열림', [v.access.offline, v.access.online], [['functional'], ['morning']]);
-      eq('8회권 개시', [v.pass.type, v.pass.total, v.pass.remaining], [8, 8, 8]);
-      eq('사용 0회로 시작', read().students.find((s) => s.id === 'st_new').pass.used, 0);
+      eq('8회권 개시', [v.passes.functional.type, v.passes.functional.total, v.passes.functional.remaining], [8, 8, 8]);
+      eq('사용 0회로 시작', read().students.find((s) => s.id === 'st_new').passes.functional.used, 0);
 
       /* 오프라인 수업 예약과 온라인 체크가 같이 된다 */
       const fuId = await sessionId(api, { y: 2026, m: 11, d: 29, hh: 10, mm: 0 });
@@ -537,7 +545,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
       await api.book('st_new', hsId);
       const both = await api.book('st_new', fuId);
       eq('두 수업 예약이 모두 들어감', both.bookings.map((b) => b.classId), ['handstand', 'functional']);
-      eq('4회권 2회 사용', both.pass.used, 2);
+      eq('수업별로 한 번씩 사용', [both.passes.handstand.used, both.passes.functional.used], [1, 1]);
     }
 
     /* 12-5. 이미 열린 수업은 유지하고 신청한 수업을 더함 */
@@ -555,13 +563,13 @@ async function sessionId(api, { y, m, d, hh, mm }) {
 
       /* 수강권이 소진된 수강생의 재등록 — 기존 수업 유지 */
       const { api: api2 } = makeContext({ now: NOW, state: baseState(NOW) });
-      await api2.request('st_sold', 'renewal', ['handstand', 'morning']);
+      await api2.request('st_sold', 'renewal', ['handstand', 'morning'], { passType: 8 });
       data = await api2.adminData();
       const r2 = data.pending[0];
       eq('재등록 신청 수업', r2.classes, ['handstand', 'morning']);
       const v2 = await api2.approveRequest(r2.id, '8');
       eq('재등록 승인 후 수업', v2.classes, ['handstand', 'morning']);
-      eq('재등록 수강권', [v2.pass.total, v2.pass.remaining], [8, 8]);
+      eq('재등록 수강권', [v2.passes.handstand.total, v2.passes.handstand.remaining], [8, 8]);
     }
 
     /* 12-6. 승인 쪽 검증 */
@@ -602,7 +610,7 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     eq('핸드스탠드+펑셔널 8회권 500,000원', price.offlinePassPrice(['handstand', 'functional'], 8), 500000);
     eq('온라인만 고르면 수강권 금액 없음', price.offlinePassPrice(['morning'], 8), null);
     eq('모닝 모빌리티 정가 59,000원', price.onlinePriceOf('morning'), 59000);
-    eq('코칭 금액은 미정', price.onlinePriceOf('coaching'), null);
+    eq('코칭 7주 300,000원', price.onlinePriceOf('coaching'), 300000);
     eq('얼리버드 마감일', price.PRICES.online.morning.was.until, '2026-11-20');
     eq('미정 안내 문구', price.PRICES.unknownLabel, '금액 추후 안내');
 
@@ -619,12 +627,12 @@ async function sessionId(api, { y, m, d, hh, mm }) {
       const { api } = makeContext({ now: NOW, state: baseState(NOW) });
       await api.request('st_new', 'register', ['functional'], { passType: 1 });
       let data = await api.adminData();
-      eq('펑셔널 1회권 신청 접수', data.pending[0].passType, 1);
+      eq('펑셔널 1회권 신청 접수', data.pending[0].passTypes, { functional: 1 });
       const v = await api.approveRequest(data.pending[0].id, '1');
-      eq('1회권 개시 · 1회', [v.pass.total, v.pass.remaining], [1, 1]);
+      eq('1회권 개시 · 1회', [v.passes.functional.total, v.passes.functional.remaining], [1, 1]);
       eq('펑셔널 수업 열림', v.classes, ['functional']);
-      const days = Math.round((new Date(v.pass.expiresAt).getTime() - NOW) / DAY);
-      eq('1회권 유효기간 30일', days, 30);
+      eq('펑셔널 1회권은 유효기간 없음', v.passes.functional.expiresAt, null);
+      eq('만료 체크 없음 표시', v.passes.functional.noExpiry, true);
     }
 
     /* 핸드스탠드에 1회권은 막힘 */
@@ -653,6 +661,175 @@ async function sessionId(api, { y, m, d, hh, mm }) {
       const v = await api.grantPass('st_only_off', 1);
       eq('펑셔널만 듣는 수강생은 1회권 부여 가능', [v.pass.total, v.pass.remaining], [1, 1]);
     }
+  }
+
+  /* ── [14] 수업별 수강권 · 코칭 30만원 · 1회권 무기한 ──────── */
+  console.log('\n[14] 수업별 수강권 · 코칭 30만원 · 1회권 유효기간 없음');
+  {
+    /* 14-1. 코칭 7주 300,000원 · 수업 카드/온라인 안내 */
+    {
+      const { ctx } = makeContext({ now: NOW });
+      const info = vm.runInContext('({ PRICES, CLASSES, ONLINE, passValidDays, passTypesOfClass })', ctx);
+      eq('코칭 금액 300,000원', info.PRICES.online.coaching.amount, 300000);
+      eq('코칭 기간 7주', info.PRICES.online.coaching.weeks, 7);
+      const coaching = info.CLASSES.find((c) => c.id === 'coaching');
+      eq('수업 카드 기간 표기 7주', coaching.period, '7주');
+      eq('수업 카드 안내 문구에 7주', /7주/.test(coaching.when), true);
+      eq('온라인 트래커 설명에 7주', /7주/.test(info.ONLINE.coaching.sub), true);
+      eq('코칭 7주 · 300,000원 합계', info.PRICES.online.coaching.amount * 1, 300000);
+    }
+
+    /* 14-2. 유효기간 — 펑셔널 1회권만 없음 */
+    {
+      const { ctx } = makeContext({ now: NOW });
+      const f = vm.runInContext('({ passValidDays, passTypesOfClass })', ctx);
+      eq('펑셔널 1회권 유효기간 없음', f.passValidDays('functional', 1), null);
+      eq('펑셔널 4회권 60일', f.passValidDays('functional', 4), 60);
+      eq('펑셔널 8회권 90일', f.passValidDays('functional', 8), 90);
+      eq('핸드스탠드 4회권 60일', f.passValidDays('handstand', 4), 60);
+      eq('핸드스탠드 8회권 90일', f.passValidDays('handstand', 8), 90);
+      eq('핸드스탠드는 1회권 없음', f.passTypesOfClass('handstand'), [4, 8]);
+      eq('펑셔널은 1·4·8회권', f.passTypesOfClass('functional'), [1, 4, 8]);
+    }
+
+    /* 14-3. 1회권은 시간이 지나도 살아 있음 (만료 체크 제외) */
+    {
+      const LATER = new Date(2027, 5, 1, 10, 0, 0, 0).getTime();  // 6개월 뒤
+      const state = baseState(NOW);
+      state.students.push({
+        id: 'st_one', name: '오한번', code: 'MJ-4001', classes: ['functional'],
+        passes: { functional: { type: 1, total: 1, used: 0, issuedAt: new Date(NOW).toISOString(), expiresAt: null } },
+      });
+      const { api } = makeContext({ now: LATER, state });
+      const v = await api.getStudent('st_one');
+      eq('6개월 뒤에도 사용 중', v.status, 'active');
+      eq('만료 표시 없음', [v.passes.functional.expired, v.passes.functional.noExpiry], [false, true]);
+      eq('D-day 없음 (expiresAt null)', v.passes.functional.expiresAt, null);
+      const fuId = await sessionId(api, { y: 2027, m: 6, d: 6, hh: 10, mm: 0 }); // 일 10:00
+      const booked = await api.book('st_one', fuId);
+      eq('6개월 뒤에도 예약됨', booked.bookings[0].classId, 'functional');
+      eq('1회권 소진', booked.passes.functional.remaining, 0);
+    }
+
+    /* 14-4. 두 수업을 다른 권종으로 신청 → 승인 → 수업별 발급 */
+    {
+      const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
+      const asked = await api.request('st_new', 'register', ['handstand', 'functional'], {
+        passTypes: { handstand: 8, functional: 1 },
+      });
+      eq('신청서에 수업별 권종', asked.pending.passTypes, { handstand: 8, functional: 1 });
+      const req = (await api.adminData()).pending[0];
+      eq('강사 목록에 수업별 권종', req.passTypes, { handstand: 8, functional: 1 });
+
+      const v = await api.approveRequest(req.id, { handstand: 8, functional: 1 });
+      eq('핸드스탠드 8회권', [v.passes.handstand.type, v.passes.handstand.remaining], [8, 8]);
+      eq('펑셔널 1회권(무기한)', [v.passes.functional.type, v.passes.functional.remaining, v.passes.functional.expiresAt], [1, 1, null]);
+      eq('두 수강권이 따로 저장됨', Object.keys(read().students.find((s) => s.id === 'st_new').passes), ['handstand', 'functional']);
+      eq('핸드스탠드 유효기간 90일', Math.round((new Date(v.passes.handstand.expiresAt).getTime() - NOW) / DAY), 90);
+
+      /* 예약은 그 수업의 수강권에서만 차감 */
+      const hsId = await sessionId(api, { y: 2026, m: 11, d: 26, hh: 14, mm: 0 });
+      const fuId = await sessionId(api, { y: 2026, m: 11, d: 29, hh: 10, mm: 0 });
+      let cur = await api.book('st_new', hsId);
+      eq('핸드스탠드 예약 → 핸드스탠드만 차감', [cur.passes.handstand.remaining, cur.passes.functional.remaining], [7, 1]);
+      cur = await api.book('st_new', fuId);
+      eq('펑셔널 예약 → 펑셔널만 차감', [cur.passes.handstand.remaining, cur.passes.functional.remaining], [7, 0]);
+
+      /* 취소도 그 수업의 수강권만 복구 */
+      const hsBooking = cur.bookings.find((b) => b.classId === 'handstand');
+      cur = await api.cancel('st_new', hsBooking.id);
+      eq('핸드스탠드 취소 → 핸드스탠드만 복구', [cur.passes.handstand.remaining, cur.passes.functional.remaining], [8, 0]);
+
+      /* 펑셔널 1회권을 다 쓰면 다른 수업 수강권으로는 예약 불가 */
+      await throws('펑셔널 소진 후 펑셔널 예약 불가', () => api.book('st_new', fuId), /펑셔널 요가 수강권/);
+    }
+
+    /* 14-5. 강사 대리 예약·취소도 그 수업 수강권만 */
+    {
+      const state = baseState(NOW);
+      state.students.find((s) => s.id === 'st_a').passes.functional.used = 3;
+      const { api } = makeContext({ now: NOW, state });
+      const fuId = await sessionId(api, { y: 2026, m: 11, d: 29, hh: 10, mm: 0 }); // 일 10:00 펑셔널
+      const v = await api.adminBook('st_a', fuId);
+      eq('대리 예약은 펑셔널만 차감', [v.passes.handstand.remaining, v.passes.functional.remaining], [3, 0]);
+      const booking = v.bookings.find((b) => b.classId === 'functional');
+      const after = await api.adminCancel(booking.id);
+      eq('대리 취소는 펑셔널만 복구', [after.passes.handstand.remaining, after.passes.functional.remaining], [3, 1]);
+    }
+
+    /* 14-6. 한 수업만 만료되어도 다른 수업은 계속 예약 */
+    {
+      const state = baseState(NOW);
+      state.students.find((s) => s.id === 'st_a').passes.functional.expiresAt = new Date(NOW - DAY).toISOString();
+      const { api } = makeContext({ now: NOW, state });
+      const v = await api.getStudent('st_a');
+      eq('펑셔널만 만료', [v.passes.handstand.active, v.passes.functional.active, v.status], [true, false, 'active']);
+      const fuId = await sessionId(api, { y: 2026, m: 11, d: 29, hh: 10, mm: 0 });
+      await throws('만료된 수업 예약 불가', () => api.book('st_a', fuId), /펑셔널 요가 수강권/);
+      const hsId = await sessionId(api, { y: 2026, m: 11, d: 26, hh: 14, mm: 0 });
+      const ok = await api.book('st_a', hsId);
+      eq('핸드스탠드는 계속 예약', ok.bookings[0].classId, 'handstand');
+    }
+
+    /* 14-7. 강사가 수업별로 부여/갱신 */
+    {
+      const { api } = makeContext({ now: NOW, state: baseState(NOW) });
+      const v = await api.grantPass('st_a', { handstand: 8, functional: 1 });
+      eq('수업별로 부여', [v.passes.handstand.type, v.passes.functional.type], [8, 1]);
+      eq('펑셔널 1회권은 무기한 부여', v.passes.functional.expiresAt, null);
+
+      const again = await api.grantPass('st_a', { handstand: 4 });
+      eq('한 수업만 갱신', [again.passes.handstand.type, again.passes.functional.type], [4, 1]);
+      await throws('열리지 않은 수업에는 부여 불가', () => api.grantPass('st_only_morn', { handstand: 4 }), /오프라인 수업/);
+      await throws('핸드스탠드에 1회권 부여 거부', () => api.grantPass('st_a', { handstand: 1 }), /4회권 · 8회권/);
+    }
+
+    /* 14-8. 이미 수강권이 있는 수업은 비워 두고 새 수업만 신청 */
+    {
+      const { api } = makeContext({ now: NOW, state: baseState(NOW) });
+      const asked = await api.request('st_a', 'register', ['handstand', 'functional'], { passTypes: {} });
+      eq('이미 있는 수강권은 그대로 신청', asked.pending.passTypes, {});
+      const req = (await api.adminData()).pending[0];
+      const v = await api.approveRequest(req.id, {});
+      eq('기존 수강권 유지', [v.passes.handstand.used, v.passes.functional.used], [1, 0]);
+    }
+  }
+
+  /* ── [15] 단일 pass → 수업별 passes 마이그레이션 ───────── */
+  console.log('\n[15] 예전 단일 수강권 데이터 마이그레이션');
+  {
+    const state = baseState(NOW);
+    state.students = [
+      {
+        id: 'st_legacy', name: '구자료', code: 'MJ-5001', classes: ['handstand', 'functional', 'morning'],
+        pass: { type: 4, total: 4, used: 2, issuedAt: new Date(NOW - 10 * DAY).toISOString(), expiresAt: new Date(NOW + 20 * DAY).toISOString() },
+      },
+      {
+        id: 'st_legacy_exp', name: '구만료', code: 'MJ-5002', classes: ['functional'],
+        pass: { type: 4, total: 4, used: 4, issuedAt: new Date(NOW - 100 * DAY).toISOString(), expiresAt: new Date(NOW - 5 * DAY).toISOString() },
+      },
+    ];
+    state.requests = [{
+      id: 'rq_legacy', studentId: 'st_legacy', type: 'renewal', classes: ['handstand', 'functional'],
+      passType: 8, status: 'pending', createdAt: new Date(NOW).toISOString(),
+    }];
+    const { api, read } = makeContext({ now: NOW, state });
+
+    const v = await api.getStudent('st_legacy');
+    eq('단일 pass가 수업별 passes로', Object.keys(v.passes), ['handstand', 'functional']);
+    eq('첫 수업이 원래 사용 횟수를 이어받음', [v.passes.handstand.type, v.passes.handstand.used, v.passes.handstand.remaining], [4, 2, 2]);
+    eq('둘째 수업은 같은 권종·사용 0회', [v.passes.functional.type, v.passes.functional.used, v.passes.functional.remaining], [4, 0, 4]);
+    eq('유효기간도 그대로', v.passes.functional.expiresAt, new Date(NOW + 20 * DAY).toISOString());
+    eq('예전 pass 필드는 정리', read().students.find((s) => s.id === 'st_legacy').pass, undefined);
+    ok('마이그레이션 후 바로 예약 가능', (await api.book('st_legacy', await sessionId(api, { y: 2026, m: 11, d: 26, hh: 14, mm: 0 }))).bookings.length === 1);
+
+    const exp = await api.getStudent('st_legacy_exp');
+    eq('만료된 단일 수강권도 수업별로', [exp.status, exp.passes.functional.expired], ['exhausted', true]);
+
+    const pending = (await api.adminData()).pending.find((r) => r.id === 'rq_legacy');
+    eq('예전 신청서 passType → passTypes', pending.passTypes, { handstand: 8, functional: 8 });
+    const okay = await api.approveRequest('rq_legacy', undefined, ['handstand', 'functional']);
+    eq('예전 신청서도 승인 가능', [okay.passes.handstand.type, okay.passes.functional.type], [8, 8]);
   }
 
   /* ── 결과 ─────────────────────────────────────────────── */
