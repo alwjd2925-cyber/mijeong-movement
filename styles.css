@@ -1509,6 +1509,15 @@ table.track-table tbody th.td-ex {
   color: rgba(24, 24, 24, 0.6);
 }
 
+/* 이번 선택에서 빠지는 수강권 안내 */
+.pass-hint {
+  margin-top: 7px;
+  font-size: 9.5px;
+  line-height: 1.6;
+  color: var(--ink-45);
+  word-break: keep-all;
+}
+
 .pass-pick:has(input:disabled) {
   cursor: default;
 }

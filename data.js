@@ -26,6 +26,7 @@ const CONFIG = {
   cancelDeadlineMs: 60 * 60 * 1000, // 수업 시작 1시간 전까지 취소 가능
   bookingWindowDays: 14,            // 예약 화면에 보여줄 기간
   passTypes: {
+    1: { count: 1, validDays: 30, label: '1회권' },
     4: { count: 4, validDays: 60, label: '4회권' },
     8: { count: 8, validDays: 90, label: '8회권' },
   },
@@ -39,10 +40,10 @@ const CONFIG = {
    금액이 정해지면 아래 표에 숫자를 넣기만 하면 화면·합계가 함께 바뀝니다. */
 const PRICES = {
   unknownLabel: '금액 추후 안내',
-  /* 오프라인 수강권 금액 (수업별) */
+  /* 오프라인 수강권 금액 (수업별 · 수업마다 있는 권종이 다릅니다) */
   offlinePass: {
     handstand: { 4: 180000, 8: 300000 },
-    functional: null,
+    functional: { 1: 35000, 4: 120000, 8: 200000 },
   },
   /* 온라인 수업 금액 (was = 지난 얼리버드 가격과 종료일) */
   online: {
@@ -59,18 +60,38 @@ function passPriceOf(classId, passType) {
   return typeof n === 'number' ? n : null;
 }
 
-/* 고른 오프라인 수업들에 대한 수강권 금액 — 수강권은 한 장이므로 확정된 금액 하나 */
+/* 고른 오프라인 수업들에 대한 수강권 금액 — 수업마다 수강권을 내므로 각 수업 금액의 합 */
 function offlinePassPrice(classes, passType) {
   const amounts = (classes || [])
     .map((id) => passPriceOf(id, passType))
     .filter((n) => typeof n === 'number');
-  return amounts.length ? Math.max.apply(null, amounts) : null;
+  if (!amounts.length) return null;
+  return amounts.reduce((sum, n) => sum + n, 0);
+}
+
+/* 그 수업들로 살 수 있는 수강권 종류 (오프라인 수업이 없으면 전부) */
+function passTypesOfClasses(classes) {
+  const offline = offlineOf(classes);
+  const all = Object.keys(CONFIG.passTypes).map(Number).sort((a, b) => a - b);
+  if (!offline.length) return all;
+  return all.filter((n) => offline.every((id) => passPriceOf(id, n) != null));
 }
 
 /* 온라인 수업 금액 — 확정되지 않았으면 null */
 function onlinePriceOf(classId) {
   const info = PRICES.online[classId];
   return info && typeof info.amount === 'number' ? info.amount : null;
+}
+
+/* 고른 수업으로 살 수 없는 수강권이면 이유를 알려 줍니다 */
+function assertPassFits(classes, passType) {
+  if (passType === undefined || passType === null || passType === '') return;
+  const allowed = passTypesOfClasses(classes);
+  if (allowed.indexOf(Number(passType)) !== -1) return;
+  const labels = allowed.map((n) => (CONFIG.passTypes[n] || {}).label).filter(Boolean).join(' · ');
+  throw new Error(labels
+    ? `이 수업은 ${labels}로만 신청할 수 있어요.`
+    : '이 수업에 쓸 수 있는 수강권이 아직 정해지지 않았어요.');
 }
 
 /* ── 수업 ──────────────────────────────────────────────── */
@@ -872,6 +893,7 @@ const api = (() => {
       if (rawPass !== undefined && rawPass !== null && rawPass !== '') {
         passType = Number(rawPass);
         if (!CONFIG.passTypes[passType]) throw new Error('수강권 종류를 다시 선택해 주세요.');
+        assertPassFits(picked, passType);
       }
 
       const request = {
@@ -903,6 +925,8 @@ const api = (() => {
       } else if (!Array.isArray(student.classes)) {
         student.classes = OFFLINE_CLASS_IDS.slice();
       }
+      /* 그 수업에 없는 권종(예: 핸드스탠드에 1회권)은 막습니다 */
+      assertPassFits(student.classes, type);
 
       /* 이미 잡혀 있는 예약은 새 수강권에서도 소진으로 계산 */
       const upcoming = s.bookings.filter((b) => {
