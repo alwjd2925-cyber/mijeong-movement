@@ -99,6 +99,114 @@
     return ((ids || []).map((id) => classMeta(id).name)).join(' · ');
   }
 
+  /* ── 금액 표시 ─────────────────────────────────────────── */
+  function won(n) {
+    return `${Number(n).toLocaleString('ko-KR')}원`;
+  }
+
+  function shortDateText(iso) {
+    const d = new Date(iso);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  }
+
+  /* 수업 카드에 붙는 금액 한 줄 */
+  function classPriceHTML(cls) {
+    if (cls.mode === 'offline') {
+      const table = PRICES.offlinePass[cls.id];
+      const types = [4, 8].filter((n) => table && typeof table[n] === 'number');
+      if (!types.length) return `<p class="class-price is-unknown">수강권 ${esc(PRICES.unknownLabel)}</p>`;
+      const parts = types.map((n) => `${CONFIG.passTypes[n].label} ${won(table[n])}`).join(' · ');
+      return `<p class="class-price"><span class="cp-label">수강권</span>${esc(parts)}</p>`;
+    }
+    const amount = onlinePriceOf(cls.id);
+    if (amount == null) return `<p class="class-price is-unknown">${esc(PRICES.unknownLabel)}</p>`;
+    const info = PRICES.online[cls.id];
+    const was = info && info.was
+      ? `<span class="cp-was">얼리버드 ${won(info.was.amount)}은 ${shortDateText(info.was.until)} 마감</span>`
+      : '';
+    return `<p class="class-price">${won(amount)}${was}</p>`;
+  }
+
+  /* 고른 수업·수강권으로 계산한 예상 금액
+     rows: 화면에 그대로 찍는 줄, confirmed: 확정 금액 합, unknown: 금액 미정 수업 이름 */
+  function priceSummary(picked, passType) {
+    const list = picked || [];
+    const offline = list.filter((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1);
+    const online = list.filter((id) => ONLINE_CLASS_IDS.indexOf(id) !== -1);
+    const rows = [];
+    const unknown = [];
+
+    if (offline.length) {
+      const priced = passType ? offline.filter((id) => passPriceOf(id, passType) != null) : [];
+      rows.push({
+        key: 'pass',
+        label: passType ? `수강권 ${CONFIG.passTypes[passType].label}` : '수강권',
+        sub: priced.length ? `${classMeta(priced[0]).name} 기준` : (passType ? '' : '고르면 금액이 정해져요'),
+        amount: passType ? offlinePassPrice(offline, passType) : null,
+        pending: !passType,
+      });
+      if (passType) {
+        offline.filter((id) => priced.indexOf(id) === -1)
+          .forEach((id) => unknown.push(classMeta(id).name));
+      }
+    }
+
+    online.forEach((id) => {
+      const info = PRICES.online[id];
+      const amount = onlinePriceOf(id);
+      rows.push({
+        key: id,
+        label: classMeta(id).name,
+        sub: info && info.was ? `얼리버드 ${won(info.was.amount)}은 ${shortDateText(info.was.until)} 마감` : '',
+        amount,
+      });
+      if (amount == null) unknown.push(classMeta(id).name);
+    });
+
+    const confirmed = rows.reduce((sum, row) => sum + (row.amount || 0), 0);
+    return { rows, confirmed, unknown };
+  }
+
+  function priceTotalText(summary) {
+    if (summary.rows.some((row) => row.pending)) return '수강권 선택 전';
+    if (summary.confirmed && summary.unknown.length) return `${won(summary.confirmed)} + 별도 안내`;
+    if (summary.confirmed) return won(summary.confirmed);
+    return '별도 안내';
+  }
+
+  /* 수강권 카드에 붙는 금액 — 지금 고른 오프라인 수업 기준 (아직 안 골랐으면 전체 기준) */
+  function passAmtText(classes, passType) {
+    const amount = offlinePassPrice(classes, passType);
+    return { amount, text: amount == null ? PRICES.unknownLabel : won(amount) };
+  }
+
+  /* 등록 폼 안의 예상 결제 금액 블록 */
+  function priceBlockHTML(picked, passType) {
+    const summary = priceSummary(picked, passType);
+    if (!summary.rows.length) {
+      return '<p class="rp-empty">수업을 고르면 예상 결제 금액이 여기에 표시됩니다.</p>';
+    }
+    const lines = summary.rows.map((row) => {
+      const amtText = row.amount != null ? won(row.amount) : (row.pending ? '선택 전' : PRICES.unknownLabel);
+      return `
+      <li class="rp-line">
+        <span class="rp-label">${esc(row.label)}${row.sub ? `<em>${esc(row.sub)}</em>` : ''}</span>
+        <b class="rp-amt${row.amount == null ? ' is-unknown' : ''}">${esc(amtText)}</b>
+      </li>`;
+    }).join('');
+    const totalLabel = summary.rows.some((row) => row.pending)
+      ? '합계'
+      : (summary.confirmed && summary.unknown.length ? '확정 금액' : '합계');
+    const note = summary.unknown.length
+      ? `<p class="rp-note">${esc(summary.unknown.join(' · '))} 금액은 추후 안내 · 실제 결제 금액은 강사 확인 후 안내됩니다.</p>`
+      : '';
+    return `
+      <div class="rp-head"><span>예상 결제 금액</span><em>확정된 금액만 합산</em></div>
+      <ul class="rp-lines">${lines}</ul>
+      <p class="rp-total"><span>${esc(totalLabel)}</span><b data-rp-total>${esc(priceTotalText(summary))}</b></p>
+      ${note}`;
+  }
+
   /* 신청서에 적힌 수업·수강권 한 줄 */
   function pendingLineHTML(v) {
     if (!v || !v.pending) return '';
@@ -197,6 +305,7 @@
           </div>
         </div>
         <p class="class-when">${esc(cls.when || scheduleLabel(cls))}</p>
+        ${classPriceHTML(cls)}
         <p class="class-blurb">${esc(cls.blurb)}</p>
         <p class="class-note">${esc(cls.note)}</p>
       </article>`;
@@ -395,12 +504,18 @@
       <div class="reg-pass${hasOffline ? '' : ' is-muted'}" data-reg-pass>
         <p class="reg-pass-label">수강권 <span>오프라인 수업을 고르면 필요해요</span></p>
         <div class="pass-picks" role="group" aria-label="수강권 선택 · 하나만">
-          ${[4, 8].map((n) => `
+          ${[4, 8].map((n) => {
+            const amount = passAmtText(hasOffline ? picked : CLASSES.map((c) => c.id), n);
+            return `
             <label class="pass-pick">
               <input class="chk" type="checkbox" name="regPass" value="${n}"${String(UI.regPass) === String(n) ? ' checked' : ''}${hasOffline ? '' : ' disabled'}>
-              <span>${CONFIG.passTypes[n].label}</span>
-              <em>${CONFIG.passTypes[n].count}회 · ${CONFIG.passTypes[n].validDays}일</em>
-            </label>`).join('')}
+              <span class="pass-body">
+                <span class="pass-name">${CONFIG.passTypes[n].label}</span>
+                <span class="pass-meta">${CONFIG.passTypes[n].count}회 · ${CONFIG.passTypes[n].validDays}일</span>
+                <b class="pass-amt${amount.amount == null ? ' is-unknown' : ''}" data-pass-amt="${n}">${esc(amount.text)}</b>
+              </span>
+            </label>`;
+          }).join('')}
         </div>
       </div>
 
@@ -411,6 +526,8 @@
           : '온라인만 신청하면 수강권 없이 이용합니다.'}</p>
       <p class="reg-warn" data-reg-warn${UI.regWarn && !picked.length ? '' : ' hidden'}>수업을 하나 이상 선택해 주세요.</p>
       <p class="reg-count" data-reg-count>선택한 수업 ${picked.length}개${picked.length ? ` · ${esc(classNamesText(picked))}` : ''}</p>
+
+      <div class="reg-price" data-reg-price>${priceBlockHTML(picked, UI.regPass)}</div>
 
       <div class="reg-form-foot">
         <button class="btn btn-butter btn-wide" type="submit" data-register-submit${picked.length ? '' : ' disabled'}>
@@ -453,6 +570,17 @@
     if (count) {
       count.textContent = `선택한 수업 ${picked.length}개${picked.length ? ` · ${classNamesText(picked)}` : ''}`;
     }
+
+    /* 수강권 카드 금액 — 지금 고른 오프라인 수업 기준 */
+    form.querySelectorAll('[data-pass-amt]').forEach((el) => {
+      const info = passAmtText(hasOffline ? picked : CLASSES.map((c) => c.id), el.dataset.passAmt);
+      el.textContent = info.text;
+      el.classList.toggle('is-unknown', info.amount == null);
+    });
+
+    /* 예상 결제 금액 */
+    const priceBox = form.querySelector('[data-reg-price]');
+    if (priceBox) priceBox.innerHTML = priceBlockHTML(picked, UI.regPass);
   }
 
   function sessionRowHTML(session, v) {
@@ -677,6 +805,7 @@
         passBoxes.forEach((box) => { box.checked = box === event.target; });
         event.target.checked = true;
         UI.regPass = event.target.value;
+        syncRegisterForm();
       }
     });
 
@@ -1384,6 +1513,18 @@
       </div>`).join('');
   }
 
+  /* 강사 요청 줄 — 신청 금액 (확정된 금액만, 미정은 별도 안내) */
+  function reqPriceHTML(classes, passType) {
+    const summary = priceSummary(classes, passType);
+    if (!summary.rows.length) return '';
+    const confirmed = summary.confirmed ? won(summary.confirmed) : '';
+    const extra = summary.unknown.length
+      ? `별도 안내 (${esc(summary.unknown.join(' · '))})`
+      : '';
+    const parts = [confirmed, extra].filter(Boolean).join(' + ');
+    return `결제 예상 <b>${parts}</b>`;
+  }
+
   let ADMIN_DATA = null;
 
   async function renderAdmin() {
@@ -1404,6 +1545,7 @@
               <b>${esc(req.studentName)}</b> <span class="req-code">${esc(req.studentCode || '')}</span> · ${esc(requestTypeLabel(req.type))}
               <span class="req-sub">${fullDate(new Date(req.createdAt))} ${timeHM(new Date(req.createdAt))}</span>
               <span class="req-picked">신청 수업 ${esc(names || '—')}${esc(pref)}</span>
+              <span class="req-price" data-req-price>${reqPriceHTML(req.classes, req.offline ? defaultPass : '')}</span>
               ${keptOnly.length ? `<span class="req-kept">이미 열린 수업 ${esc(classNamesText(keptOnly))} 은 그대로 유지</span>` : ''}
             </div>
             <div class="req-act">
@@ -1511,6 +1653,30 @@
         if (sessionSelect && ADMIN_DATA) {
           sessionSelect.innerHTML = sessionOptionsHTML(ADMIN_DATA, UI.adminStudent);
         }
+        return;
+      }
+
+      /* 강사 요청 줄 — 수강권 종류나 수업 체크를 바꾸면 금액을 다시 계산 */
+      const reqTypeSelect = event.target.closest('[data-req-type]');
+      if (reqTypeSelect) {
+        const row = reqTypeSelect.closest('.req-row');
+        const holder = row ? row.querySelector('[data-req-cls]') : null;
+        const classes = holder
+          ? Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value)
+          : [];
+        const priceEl = row ? row.querySelector('[data-req-price]') : null;
+        if (priceEl) priceEl.innerHTML = reqPriceHTML(classes, reqTypeSelect.value);
+        return;
+      }
+
+      const reqClassBox = event.target.closest('[data-req-cls] input[type="checkbox"]');
+      if (reqClassBox) {
+        const row = reqClassBox.closest('.req-row');
+        const holder = reqClassBox.closest('[data-req-cls]');
+        const select = row ? row.querySelector('[data-req-type]') : null;
+        const classes = Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value);
+        const priceEl = row ? row.querySelector('[data-req-price]') : null;
+        if (priceEl && select) priceEl.innerHTML = reqPriceHTML(classes, select.value);
         return;
       }
 

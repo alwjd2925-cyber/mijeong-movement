@@ -582,6 +582,25 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     }
   }
 
+  /* ── [13] 금액표 ───────────────────────────────────────── */
+  console.log('\n[13] 금액 정보');
+  {
+    const { ctx } = makeContext({ now: NOW });
+    const price = vm.runInContext('({ PRICES, passPriceOf, offlinePassPrice, onlinePriceOf })', ctx);
+
+    eq('핸드스탠드 4회권 180,000원', price.passPriceOf('handstand', 4), 180000);
+    eq('핸드스탠드 8회권 300,000원', price.passPriceOf('handstand', 8), 300000);
+    eq('펑셔널 수강권 금액은 미정', price.passPriceOf('functional', 8), null);
+    eq('오프라인 둘을 골라도 확정 금액은 한 번만', price.offlinePassPrice(['handstand', 'functional'], 8), 300000);
+    eq('펑셔널만 고르면 금액 미정', price.offlinePassPrice(['functional'], 4), null);
+    eq('온라인만 고르면 수강권 금액 없음', price.offlinePassPrice(['morning'], 8), null);
+    eq('모닝 모빌리티 정가 59,000원', price.onlinePriceOf('morning'), 59000);
+    eq('코칭 금액은 미정', price.onlinePriceOf('coaching'), null);
+    eq('얼리버드 마감일', price.PRICES.online.morning.was.until, '2026-11-20');
+    eq('얼리버드 지난 가격', price.PRICES.online.morning.was.amount, 49000);
+    eq('미정 안내 문구', price.PRICES.unknownLabel, '금액 추후 안내');
+  }
+
   /* ── 결과 ─────────────────────────────────────────────── */
   console.log(`\n${failures.length ? '✗ 실패' : '✓ 통과'} — ${passed}개 확인, ${failures.length}개 실패`);
   if (failures.length) {

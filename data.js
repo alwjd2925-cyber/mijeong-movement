@@ -31,6 +31,48 @@ const CONFIG = {
   },
 };
 
+/* ── 금액 ─────────────────────────────────────────────────
+   강사에게 확인된 금액만 적습니다. null 은 '금액 추후 안내'(별도 문의).
+   - 오프라인 수업은 수강권으로 결제하므로 수업별 수강권 금액을 둡니다.
+     수강권은 한 장이라 여러 수업을 골라도 계산은 확정된 금액 한 번만 합니다.
+   - 온라인 수업은 수강권 없이 수업 단위로 결제합니다.
+   금액이 정해지면 아래 표에 숫자를 넣기만 하면 화면·합계가 함께 바뀝니다. */
+const PRICES = {
+  unknownLabel: '금액 추후 안내',
+  /* 오프라인 수강권 금액 (수업별) */
+  offlinePass: {
+    handstand: { 4: 180000, 8: 300000 },
+    functional: null,
+  },
+  /* 온라인 수업 금액 (was = 지난 얼리버드 가격과 종료일) */
+  online: {
+    morning: { amount: 59000, was: { amount: 49000, until: '2026-11-20' } },
+    coaching: null,
+  },
+};
+
+/* 수업 하나의 수강권 금액 — 확정되지 않았으면 null */
+function passPriceOf(classId, passType) {
+  const table = PRICES.offlinePass[classId];
+  if (!table) return null;
+  const n = table[passType];
+  return typeof n === 'number' ? n : null;
+}
+
+/* 고른 오프라인 수업들에 대한 수강권 금액 — 수강권은 한 장이므로 확정된 금액 하나 */
+function offlinePassPrice(classes, passType) {
+  const amounts = (classes || [])
+    .map((id) => passPriceOf(id, passType))
+    .filter((n) => typeof n === 'number');
+  return amounts.length ? Math.max.apply(null, amounts) : null;
+}
+
+/* 온라인 수업 금액 — 확정되지 않았으면 null */
+function onlinePriceOf(classId) {
+  const info = PRICES.online[classId];
+  return info && typeof info.amount === 'number' ? info.amount : null;
+}
+
 /* ── 수업 ──────────────────────────────────────────────── */
 /* mode: 'offline' = 스튜디오 수업 / 'online' = 온라인 클래스
    slots: dow 0=일 … 6=토, start/end = 'HH:MM'
