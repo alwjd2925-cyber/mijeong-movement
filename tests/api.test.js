@@ -586,19 +586,73 @@ async function sessionId(api, { y, m, d, hh, mm }) {
   console.log('\n[13] 금액 정보');
   {
     const { ctx } = makeContext({ now: NOW });
-    const price = vm.runInContext('({ PRICES, passPriceOf, offlinePassPrice, onlinePriceOf })', ctx);
+    const price = vm.runInContext('({ PRICES, CONFIG, passPriceOf, offlinePassPrice, passTypesOfClasses, onlinePriceOf })', ctx);
 
+    /* 수업별 수강권 금액 */
     eq('핸드스탠드 4회권 180,000원', price.passPriceOf('handstand', 4), 180000);
     eq('핸드스탠드 8회권 300,000원', price.passPriceOf('handstand', 8), 300000);
-    eq('펑셔널 수강권 금액은 미정', price.passPriceOf('functional', 8), null);
-    eq('오프라인 둘을 골라도 확정 금액은 한 번만', price.offlinePassPrice(['handstand', 'functional'], 8), 300000);
-    eq('펑셔널만 고르면 금액 미정', price.offlinePassPrice(['functional'], 4), null);
+    eq('핸드스탠드는 1회권 없음', price.passPriceOf('handstand', 1), null);
+    eq('펑셔널 1회권 35,000원', price.passPriceOf('functional', 1), 35000);
+    eq('펑셔널 4회권 120,000원', price.passPriceOf('functional', 4), 120000);
+    eq('펑셔널 8회권 200,000원', price.passPriceOf('functional', 8), 200000);
+
+    /* 합계 — 수업마다 각각 합산 */
+    eq('펑셔널만 1회권 35,000원', price.offlinePassPrice(['functional'], 1), 35000);
+    eq('핸드스탠드+펑셔널 4회권 300,000원', price.offlinePassPrice(['handstand', 'functional'], 4), 300000);
+    eq('핸드스탠드+펑셔널 8회권 500,000원', price.offlinePassPrice(['handstand', 'functional'], 8), 500000);
     eq('온라인만 고르면 수강권 금액 없음', price.offlinePassPrice(['morning'], 8), null);
     eq('모닝 모빌리티 정가 59,000원', price.onlinePriceOf('morning'), 59000);
     eq('코칭 금액은 미정', price.onlinePriceOf('coaching'), null);
     eq('얼리버드 마감일', price.PRICES.online.morning.was.until, '2026-11-20');
-    eq('얼리버드 지난 가격', price.PRICES.online.morning.was.amount, 49000);
     eq('미정 안내 문구', price.PRICES.unknownLabel, '금액 추후 안내');
+
+    /* 1회권 규칙 — 1회 · 30일 */
+    eq('1회권 횟수', price.CONFIG.passTypes[1].count, 1);
+    eq('1회권 유효기간', price.CONFIG.passTypes[1].validDays, 30);
+    eq('펑셔널이면 1·4·8회권 모두 가능', price.passTypesOfClasses(['functional']), [1, 4, 8]);
+    eq('핸드스탠드가 있으면 4·8회권만', price.passTypesOfClasses(['handstand']), [4, 8]);
+    eq('두 수업 함께여도 4·8회권만', price.passTypesOfClasses(['handstand', 'functional']), [4, 8]);
+    eq('온라인만이면 전부', price.passTypesOfClasses(['morning']), [1, 4, 8]);
+
+    /* 1회권 신청 → 승인 */
+    {
+      const { api } = makeContext({ now: NOW, state: baseState(NOW) });
+      await api.request('st_new', 'register', ['functional'], { passType: 1 });
+      let data = await api.adminData();
+      eq('펑셔널 1회권 신청 접수', data.pending[0].passType, 1);
+      const v = await api.approveRequest(data.pending[0].id, '1');
+      eq('1회권 개시 · 1회', [v.pass.total, v.pass.remaining], [1, 1]);
+      eq('펑셔널 수업 열림', v.classes, ['functional']);
+      const days = Math.round((new Date(v.pass.expiresAt).getTime() - NOW) / DAY);
+      eq('1회권 유효기간 30일', days, 30);
+    }
+
+    /* 핸드스탠드에 1회권은 막힘 */
+    {
+      const { api } = makeContext({ now: NOW, state: baseState(NOW) });
+      await throws('핸드스탠드 + 1회권 신청 거부',
+        () => api.request('st_new', 'register', ['handstand'], { passType: 1 }),
+        /4회권 · 8회권/);
+      eq('거부된 신청은 저장되지 않음', (await api.adminData()).pending.length, 0);
+
+      await api.request('st_new', 'register', ['handstand', 'functional'], { passType: 4 });
+      const req = (await api.adminData()).pending[0];
+      await throws('승인에서도 1회권은 막힘',
+        () => api.approveRequest(req.id, '1'),
+        /4회권 · 8회권/);
+      const v = await api.approveRequest(req.id, '8');
+      eq('8회권으로 승인 · 두 수업', [v.pass.total, v.classes.length], [8, 2]);
+    }
+
+    /* 강사가 직접 부여할 때도 같은 규칙 */
+    {
+      const { api } = makeContext({ now: NOW, state: baseState(NOW) });
+      await throws('수강권 부여도 1회권 거부',
+        () => api.grantPass('st_a', 1),
+        /4회권 · 8회권/);
+      const v = await api.grantPass('st_only_off', 1);
+      eq('펑셔널만 듣는 수강생은 1회권 부여 가능', [v.pass.total, v.pass.remaining], [1, 1]);
+    }
   }
 
   /* ── 결과 ─────────────────────────────────────────────── */
