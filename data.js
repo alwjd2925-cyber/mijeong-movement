@@ -32,6 +32,20 @@ const CONFIG = {
   },
 };
 
+/* 수업별 유효기간 예외
+   - 값이 null 이면 그 수업의 그 수강권은 유효기간이 없습니다 (만료 체크 없음).
+   - 여기에 없는 조합은 CONFIG.passTypes[권종].validDays 를 씁니다. */
+const PASS_VALIDITY = {
+  functional: { 1: null }, // 펑셔널 요가 1회권 — 유효기간 없음
+};
+
+function passValidDays(classId, passType) {
+  const table = PASS_VALIDITY[classId];
+  if (table && Object.prototype.hasOwnProperty.call(table, passType)) return table[passType];
+  const t = CONFIG.passTypes[passType];
+  return t ? t.validDays : null;
+}
+
 /* ── 금액 ─────────────────────────────────────────────────
    강사에게 확인된 금액만 적습니다. null 은 '금액 추후 안내'(별도 문의).
    - 오프라인 수업은 수강권으로 결제하므로 수업별 수강권 금액을 둡니다.
@@ -45,10 +59,10 @@ const PRICES = {
     handstand: { 4: 180000, 8: 300000 },
     functional: { 1: 35000, 4: 120000, 8: 200000 },
   },
-  /* 온라인 수업 금액 (was = 지난 얼리버드 가격과 종료일) */
+  /* 온라인 수업 금액 (was = 지난 얼리버드 가격과 종료일, weeks = 진행 기간) */
   online: {
     morning: { amount: 59000, was: { amount: 49000, until: '2026-11-20' } },
-    coaching: null,
+    coaching: { amount: 300000, weeks: 7 },
   },
 };
 
@@ -69,7 +83,14 @@ function offlinePassPrice(classes, passType) {
   return amounts.reduce((sum, n) => sum + n, 0);
 }
 
-/* 그 수업들로 살 수 있는 수강권 종류 (오프라인 수업이 없으면 전부) */
+/* 수업 하나로 살 수 있는 수강권 종류 — 금액표에 있는 권종만 */
+function passTypesOfClass(classId) {
+  const table = PRICES.offlinePass[classId];
+  if (!table) return [];
+  return Object.keys(table).map(Number).filter((n) => CONFIG.passTypes[n]).sort((a, b) => a - b);
+}
+
+/* 수업들 모두에 쓸 수 있는 공통 수강권 종류 (오프라인 수업이 없으면 전부) */
 function passTypesOfClasses(classes) {
   const offline = offlineOf(classes);
   const all = Object.keys(CONFIG.passTypes).map(Number).sort((a, b) => a - b);
@@ -149,10 +170,11 @@ const CLASSES = [
     mode: 'online',
     duration: null,
     slots: [],
-    when: '온라인 코칭 · 개별/정기 진행',
+    when: '온라인 코칭 · 7주 · 개별/정기 진행',
+    period: '7주',
     blurb:
-      '온라인으로 피드백과 맞춤 연습을 주고받으며 핸드스탠드를 이어가는 코칭입니다. 오프라인 수업에서 잡은 감각을 집에서 놓지 않도록, 지금 수준에 맞는 연습을 골라 드립니다.',
-    note: '온라인 · 인스타 DM 신청',
+      '7주 동안 온라인으로 피드백과 맞춤 연습을 주고받으며 핸드스탠드를 이어가는 코칭입니다. 오프라인 수업에서 잡은 감각을 집에서 놓지 않도록, 지금 수준에 맞는 연습을 골라 드립니다.',
+    note: '온라인 · 7주 과정 · 인스타 DM 신청',
   },
 ];
 
@@ -174,6 +196,11 @@ function offlineOf(classes) {
   return OFFLINE_CLASS_IDS.filter((id) => (classes || []).indexOf(id) !== -1);
 }
 
+function classNameOf(classId) {
+  const cls = CLASSES.find((c) => c.id === classId);
+  return cls ? cls.name : classId;
+}
+
 function onlineOf(classes) {
   return ONLINE_CLASS_IDS.filter((id) => (classes || []).indexOf(id) !== -1);
 }
@@ -186,6 +213,51 @@ function accessFor(student) {
     offline: offlineOf(classes),
     online: onlineOf(classes),
     sequence: classes.indexOf('handstand') !== -1,
+  };
+}
+
+/* ── 수강권 (수업별로 따로) ───────────────────────────────
+   수강생은 오프라인 수업마다 자기 수강권을 가집니다.
+   student.passes = { handstand: {type,total,used,issuedAt,expiresAt}, functional: {...} }
+   expiresAt 이 null 이면 유효기간 없음 — 만료 체크를 하지 않습니다. */
+function passIsActive(pass, at) {
+  if (!pass) return false;
+  const now = at == null ? Date.now() : at;
+  if (passRemaining(pass) <= 0) return false;
+  if (pass.expiresAt && now > new Date(pass.expiresAt).getTime()) return false;
+  return true;
+}
+
+function passRemaining(pass) {
+  return Math.max(0, Number(pass.total || 0) - Number(pass.used || 0));
+}
+
+/* 수강생이 지금 살아 있는(예약할 수 있는) 수강권을 가진 수업 */
+function activeOfflineOf(student, at) {
+  const offline = offlineOf(normalizeClasses(student && student.classes));
+  return offline.filter((id) => passIsActive(student.passes && student.passes[id], at));
+}
+
+/* 앱에 보이는 수강권 한 장 */
+function passView(pass, classId, at) {
+  if (!pass) return null;
+  const now = at == null ? Date.now() : at;
+  const remaining = passRemaining(pass);
+  const noExpiry = !pass.expiresAt;
+  const expired = !noExpiry && now > new Date(pass.expiresAt).getTime();
+  return {
+    classId,
+    type: Number(pass.type),
+    total: Number(pass.total),
+    used: Number(pass.used) || 0,
+    remaining,
+    issuedAt: pass.issuedAt || null,
+    expiresAt: pass.expiresAt || null,
+    validDays: noExpiry ? null : passValidDays(classId, Number(pass.type)),
+    noExpiry,
+    expired,
+    active: remaining > 0 && !expired,
+    label: (CONFIG.passTypes[pass.type] || {}).label || `${pass.type}회권`,
   };
 }
 
@@ -390,7 +462,8 @@ const ONLINE = {
     id: 'coaching',
     name: '핸드스탠드 온라인 코칭',
     en: 'Handstand Online Coaching',
-    sub: '영상을 보고 따라 한 뒤, 그날의 감각을 체크해 두세요',
+    period: '7주',
+    sub: '7주 과정 · 영상을 보고 따라 한 뒤, 그날의 감각을 체크해 두세요',
     noteLabel: 'Coaching Note',
     noteHint: '각자의 느낌들을 자유롭게 적어 보세요',
     movements: COACHING_MOVEMENTS,
@@ -467,6 +540,53 @@ const api = (() => {
     return buildSessions(new Date(), 30).find((s) => s.id === id) || null;
   }
 
+  /* 넘어온 희망 수강권을 수업별 객체로 정리
+     - { handstand: 8, functional: 1 } 또는 숫자 하나(대상 수업 모두 같은 권종)
+     - 빈 값(선택 안 함)은 빼고 돌려줍니다. */
+  function parsePassTypes(raw, targetClasses) {
+    const out = {};
+    if (raw === undefined || raw === null || raw === '' || raw === 'none') return out;
+    const typeOf = (value) => {
+      const n = Number(value);
+      if (!CONFIG.passTypes[n]) throw new Error('수강권 종류를 다시 선택해 주세요.');
+      return n;
+    };
+    if (typeof raw === 'object' && !Array.isArray(raw)) {
+      Object.keys(raw).forEach((classId) => {
+        const value = raw[classId];
+        if (value === undefined || value === null || value === '' || value === 'none') return;
+        out[classId] = typeOf(value);
+      });
+      return out;
+    }
+    const n = typeOf(raw);
+    (targetClasses || []).forEach((classId) => { out[classId] = n; });
+    return out;
+  }
+
+  /* 수강권 한 장 발급 — 그 수업에 이미 잡혀 있는 예약은 사용 횟수로 계산합니다
+     유효기간이 없는 권종(PASS_VALIDITY === null)은 expiresAt: null 로 두어 만료되지 않습니다. */
+  function issuePass(student, classId, type, s) {
+    const t = CONFIG.passTypes[type];
+    if (!t) throw new Error('수강권 종류를 선택해 주세요.');
+    assertPassFits([classId], type);
+    const upcoming = s.bookings.filter((b) => {
+      if (b.studentId !== student.id) return false;
+      const session = sessionFor(b.sessionId);
+      return !!session && session.classId === classId;
+    }).length;
+    const now = new Date();
+    const days = passValidDays(classId, type);
+    if (!student.passes || typeof student.passes !== 'object') student.passes = {};
+    student.passes[classId] = {
+      type: Number(type),
+      total: t.count,
+      used: Math.min(upcoming, t.count),
+      issuedAt: now.toISOString(),
+      expiresAt: days == null ? null : new Date(now.getTime() + days * 86400000).toISOString(),
+    };
+  }
+
   /* 최초 실행 시 데모 데이터 */
   function fresh() {
     const now = new Date();
@@ -476,25 +596,32 @@ const api = (() => {
     const wk2 = weekKeyOf(addDays(now, -14).getTime());
     const students = [
       /* 아직 열린 수업도 수강권도 없는 신규 수강생 */
-      { id: 'st_new', name: '김하늘', code: 'MJ-1024', pass: null, classes: [], createdAt: iso(addDays(now, -1)) },
-      /* 오프라인 4회권 · 핸드스탠드 + 펑셔널 + 모닝 모빌리티 */
+      { id: 'st_new', name: '김하늘', code: 'MJ-1024', passes: {}, classes: [], createdAt: iso(addDays(now, -1)) },
+      /* 오프라인 수업별 수강권 · 핸드스탠드 4회권(2회 사용) + 펑셔널 4회권(1회 사용) + 모닝 모빌리티 */
       {
         id: 'st_offline', name: '이서연', code: 'MJ-2048', classes: ['handstand', 'functional', 'morning'],
-        pass: { type: 4, total: 4, used: 2, issuedAt: iso(addDays(now, -10)), expiresAt: iso(addDays(now, 50)) },
+        passes: {
+          handstand: { type: 4, total: 4, used: 2, issuedAt: iso(addDays(now, -10)), expiresAt: iso(addDays(now, 50)) },
+          functional: { type: 4, total: 4, used: 1, issuedAt: iso(addDays(now, -10)), expiresAt: iso(addDays(now, 50)) },
+        },
         createdAt: iso(addDays(now, -30)),
       },
       /* 모닝 모빌리티만 열린 온라인 수강생 */
-      { id: 'st_morning', name: '박지우', code: 'MJ-0812', pass: null, classes: ['morning'], createdAt: iso(addDays(now, -12)) },
-      /* 온라인 코칭 + 모닝 + 핸드스탠드 (8회권) — 온라인 탭 두 개 */
+      { id: 'st_morning', name: '박지우', code: 'MJ-0812', passes: {}, classes: ['morning'], createdAt: iso(addDays(now, -12)) },
+      /* 온라인 코칭 + 모닝 + 핸드스탠드 (핸드스탠드 8회권) — 온라인 탭 두 개 */
       {
         id: 'st_coaching', name: '정민아', code: 'MJ-1125', classes: ['handstand', 'morning', 'coaching'],
-        pass: { type: 8, total: 8, used: 3, issuedAt: iso(addDays(now, -14)), expiresAt: iso(addDays(now, 76)) },
+        passes: {
+          handstand: { type: 8, total: 8, used: 3, issuedAt: iso(addDays(now, -14)), expiresAt: iso(addDays(now, 76)) },
+        },
         createdAt: iso(addDays(now, -20)),
       },
       /* 펑셔널 요가만 · 수강권 만료 (이름+코드 로그인으로 확인) */
       {
         id: 'st_expired', name: '최유진', code: 'MJ-0917', classes: ['functional'],
-        pass: { type: 4, total: 4, used: 4, issuedAt: iso(addDays(now, -100)), expiresAt: iso(addDays(now, -5)) },
+        passes: {
+          functional: { type: 4, total: 4, used: 4, issuedAt: iso(addDays(now, -100)), expiresAt: iso(addDays(now, -5)) },
+        },
         createdAt: iso(addDays(now, -110)),
       },
     ];
@@ -646,6 +773,7 @@ const api = (() => {
       save();
     }
     migrateClasses();
+    migratePasses();
     prune();
     return state;
   }
@@ -678,8 +806,87 @@ const api = (() => {
         return;
       }
       const programs = Object.keys((state.online && state.online[student.id]) || {});
-      const guessed = (student.pass ? OFFLINE_CLASS_IDS.slice() : []).concat(programs);
+      const hasPass = !!student.pass || (student.passes && Object.keys(student.passes).length > 0);
+      const guessed = (hasPass ? OFFLINE_CLASS_IDS.slice() : []).concat(programs);
       student.classes = normalizeClasses(guessed);
+      changed = true;
+    });
+
+    if (changed) save();
+  }
+
+  /* 수업별 수강권 이전 데이터 보정 (단일 pass → passes)
+     - 예전에는 수강생당 수강권 한 장이었습니다. 그 수강권을 첫 번째 오프라인 수강권으로 옮기고,
+       나머지 오프라인 수업에는 같은 권종·같은 유효기간의 새 수강권을 붙입니다(사용 0회).
+     - 신청서의 희망 수강권(passType)도 수업별(passTypes)로 나뉩니다. */
+  function migratePasses() {
+    let changed = false;
+    const at = Date.now();
+
+    (state.students || []).forEach((student) => {
+      let hasMap = student.passes && typeof student.passes === 'object' && !Array.isArray(student.passes);
+      if (!hasMap || student.pass) {
+        const offline = offlineOf(normalizeClasses(student.classes));
+        const legacy = student.pass && CONFIG.passTypes[student.pass.type] ? student.pass : null;
+        const next = hasMap ? { ...student.passes } : {};
+        if (legacy && offline.length) {
+          offline.forEach((classId, index) => {
+            if (next[classId]) return;
+            next[classId] = {
+              type: Number(legacy.type),
+              total: Number(legacy.total) || CONFIG.passTypes[legacy.type].count,
+              used: index === 0 ? Math.max(0, Number(legacy.used) || 0) : 0,
+              issuedAt: legacy.issuedAt || new Date(at).toISOString(),
+              expiresAt: legacy.expiresAt || null,
+            };
+          });
+        }
+        student.passes = next;
+        if (student.pass) delete student.pass;
+        changed = true;
+      }
+
+      /* 수강권 숫자·유효기간 형태 정리 */
+      Object.keys(student.passes || {}).forEach((classId) => {
+        const p = student.passes[classId];
+        if (!p || typeof p !== 'object') {
+          delete student.passes[classId];
+          changed = true;
+          return;
+        }
+        const type = Number(p.type);
+        if (!CONFIG.passTypes[type]) {
+          delete student.passes[classId];
+          changed = true;
+          return;
+        }
+        const total = Number(p.total) || CONFIG.passTypes[type].count;
+        const used = Math.max(0, Number(p.used) || 0);
+        const expiresAt = p.expiresAt === undefined ? null : p.expiresAt;
+        if (p.type !== type || p.total !== total || p.used !== used || p.expiresAt !== expiresAt) {
+          student.passes[classId] = { ...p, type, total, used, expiresAt };
+          changed = true;
+        }
+      });
+    });
+
+    /* 신청서의 희망 수강권도 수업별로 */
+    (state.requests || []).forEach((req) => {
+      if (req.passTypes && typeof req.passTypes === 'object' && !Array.isArray(req.passTypes)) {
+        if (req.passType !== undefined) {
+          delete req.passType;
+          changed = true;
+        }
+        return;
+      }
+      if (req.passType == null) return;
+      const type = Number(req.passType);
+      const map = {};
+      offlineOf(normalizeClasses(req.classes)).forEach((classId) => {
+        if (passPriceOf(classId, type) != null) map[classId] = type;
+      });
+      req.passTypes = map;
+      delete req.passType;
       changed = true;
     });
 
@@ -696,14 +903,12 @@ const api = (() => {
 
   function statusOf(student) {
     const pending = state.requests.find((r) => r.studentId === student.id && r.status === 'pending');
-    if (!student.pass) return { status: pending ? 'pending' : 'new', pending: pending || null };
-    const remaining = Math.max(0, student.pass.total - student.pass.used);
-    const expired = Date.now() > new Date(student.pass.expiresAt).getTime();
-    if (expired || remaining <= 0) {
-      return { status: pending ? 'pending' : 'exhausted', pending: pending || null };
-    }
-    /* 수강권이 남아 있으면 요청이 대기 중이어도 계속 예약할 수 있습니다 */
-    return { status: 'active', pending: pending || null };
+    const offline = offlineOf(normalizeClasses(student.classes));
+    const passes = offline.map((id) => student.passes && student.passes[id]).filter(Boolean);
+    if (!passes.length) return { status: pending ? 'pending' : 'new', pending: pending || null };
+    /* 한 수업이라도 예약할 수 있는 수강권이 살아 있으면 사용 중 */
+    if (passes.some((p) => passIsActive(p))) return { status: 'active', pending: pending || null };
+    return { status: pending ? 'pending' : 'exhausted', pending: pending || null };
   }
 
   /* 앱이 쓰는 수강생 뷰 (계산된 값 포함) */
@@ -732,15 +937,21 @@ const api = (() => {
       .sort((a, b) => new Date(a.startISO) - new Date(b.startISO));
 
     let pass = null;
-    if (student.pass) {
-      const remaining = Math.max(0, student.pass.total - student.pass.used);
-      pass = {
-        ...student.pass,
-        remaining,
-        expired: Date.now() > new Date(student.pass.expiresAt).getTime(),
-        label: (CONFIG.passTypes[student.pass.type] || {}).label || `${student.pass.type}회권`,
-      };
-    }
+    const passes = {};
+    access.offline.forEach((classId) => {
+      const pv = passView(student.passes && student.passes[classId], classId);
+      if (pv) passes[classId] = pv;
+    });
+    /* 예전 화면과의 호환: 대표 수강권 한 장 (첫 오프라인 수업의 수강권) */
+    const firstPassId = Object.keys(passes)[0];
+    if (firstPassId) pass = passes[firstPassId];
+
+    /* 예약 건수는 수업별로도 셀 수 있게 함께 넘깁니다 */
+    const bookingsByClass = {};
+    bookings.forEach((b) => {
+      bookingsByClass[b.classId] = (bookingsByClass[b.classId] || 0) + 1;
+    });
+
     return {
       id: student.id,
       name: student.name,
@@ -752,14 +963,36 @@ const api = (() => {
           type: pending.type,
           createdAt: pending.createdAt,
           classes: normalizeClasses(pending.classes),
-          passType: pending.passType == null ? null : Number(pending.passType),
+          passTypes: pendingPassTypes(pending),
         }
         : null,
       pass,
+      passes,
       bookings,
+      bookingsByClass,
       classes: access.classes,
       access,
     };
+  }
+
+  /* 신청서의 희망 수강권 — 수업별 객체 (예전 단일 passType 데이터도 읽습니다) */
+  function pendingPassTypes(request) {
+    const out = {};
+    const raw = request && request.passTypes;
+    if (raw && typeof raw === 'object') {
+      Object.keys(raw).forEach((classId) => {
+        const n = Number(raw[classId]);
+        if (CONFIG.passTypes[n]) out[classId] = n;
+      });
+      return out;
+    }
+    const legacy = request && request.passType;
+    if (legacy == null || legacy === '') return out;
+    const n = Number(legacy);
+    offlineOf(normalizeClasses(request.classes)).forEach((classId) => {
+      if (CONFIG.passTypes[n] && passPriceOf(classId, n) != null) out[classId] = n;
+    });
+    return out;
   }
 
   return {
@@ -798,12 +1031,15 @@ const api = (() => {
       if (!student) throw new Error('수강생 정보를 찾을 수 없어요.');
 
       const v = viewStudent(studentId);
-      if (v.status !== 'active') throw new Error('수강권이 활성화된 수강생만 예약할 수 있어요.');
-
       const session = sessionFor(sessionId);
       if (!session) throw new Error('예약할 수 없는 시간이에요.');
       if (v.classes.indexOf(session.classId) === -1) {
         throw new Error('수강 중인 수업만 예약할 수 있어요.');
+      }
+      /* 그 수업의 수강권만 봅니다 — 다른 수업 수강권으로는 예약할 수 없습니다 */
+      const classPass = v.passes[session.classId];
+      if (!classPass || !classPass.active) {
+        throw new Error(`${session.className} 수강권이 없거나 기간이 지났어요.`);
       }
       if (session.start <= Date.now()) throw new Error('이미 시작한 수업이에요.');
 
@@ -828,7 +1064,8 @@ const api = (() => {
         by: byInstructor ? 'instructor' : 'student',
         createdAt: new Date().toISOString(),
       });
-      student.pass.used += 1;
+      /* 그 수업의 수강권에서만 1회 차감 */
+      student.passes[session.classId].used = Number(student.passes[session.classId].used || 0) + 1;
       save();
       return viewStudent(studentId);
     },
@@ -856,7 +1093,8 @@ const api = (() => {
 
       s.bookings = s.bookings.filter((b) => b.id !== bookingId);
       const student = s.students.find((x) => x.id === studentId);
-      if (student && student.pass) student.pass.used = Math.max(0, student.pass.used - 1);
+      const classPass = student && student.passes ? student.passes[session.classId] : null;
+      if (classPass) classPass.used = Math.max(0, Number(classPass.used || 0) - 1);
       save();
       return viewStudent(studentId);
     },
@@ -875,7 +1113,8 @@ const api = (() => {
 
     /* ── 신규 등록 / 재등록 요청 ── */
     /* classes: 수강을 원하는 수업(최소 1개, 여러 개 가능). 강사가 승인할 때 그대로 열어 줍니다.
-       options.passType: 희망 수강권(4·8). 오프라인 수업을 골랐을 때 화면에서 고르게 합니다.
+       options.passTypes: 수업별 희망 수강권 { handstand: 8, functional: 1 }.
+         숫자 하나만 주면 그 수업들 모두에 같은 권종으로 신청합니다(예전 방식).
        허용된 수업을 하나도 고르지 않으면 신청 자체를 막습니다. */
     async request(studentId, type, classes, options = {}) {
       const s = load();
@@ -888,20 +1127,30 @@ const api = (() => {
       const picked = normalizeClasses(Array.isArray(classes) ? classes : student.classes);
       if (!picked.length) throw new Error('수업을 하나 이상 선택해 주세요.');
 
-      const rawPass = options && options.passType;
-      let passType = null;
-      if (rawPass !== undefined && rawPass !== null && rawPass !== '') {
-        passType = Number(rawPass);
-        if (!CONFIG.passTypes[passType]) throw new Error('수강권 종류를 다시 선택해 주세요.');
-        assertPassFits(picked, passType);
-      }
+      const offlinePicked = offlineOf(picked);
+      const raw = options && options.passTypes !== undefined ? options.passTypes : (options && options.passType);
+      const passTypes = parsePassTypes(raw, offlinePicked);
+      Object.keys(passTypes).forEach((classId) => {
+        if (offlinePicked.indexOf(classId) === -1) {
+          throw new Error('수강권은 오프라인 수업에만 고를 수 있어요.');
+        }
+        /* 그 수업에 없는 권종(예: 핸드스탠드에 1회권)은 막습니다 */
+        assertPassFits([classId], passTypes[classId]);
+      });
+      /* 오프라인 수업은 수강권을 골라야 신청됩니다 (이미 살아 있는 수강권이 있으면 그대로 둡니다) */
+      const active = activeOfflineOf(student);
+      offlinePicked.forEach((classId) => {
+        if (!passTypes[classId] && active.indexOf(classId) === -1) {
+          throw new Error(`${classNameOf(classId)} 수강권을 골라 주세요.`);
+        }
+      });
 
       const request = {
         id: uid('rq'),
         studentId,
         type, // 'register' | 'renewal'
         classes: picked,
-        passType,
+        passTypes,
         status: 'pending',
         createdAt: new Date().toISOString(),
       };
@@ -911,38 +1160,39 @@ const api = (() => {
     },
 
     /* ── 강사: 수강권 부여 / 요청 승인 ── */
-    /* classes 를 주면 그 수업으로 접근 권한도 함께 바뀝니다 */
+    /* type: 수업별 수강권 { handstand: 8, functional: 1 } 또는 숫자 하나(열린 오프라인 수업 전체).
+       classes 를 주면 그 수업으로 접근 권한도 함께 바뀝니다. */
     async grantPass(studentId, type, classes) {
       const s = load();
       const student = s.students.find((x) => x.id === studentId);
       if (!student) throw new Error('수강생을 찾을 수 없어요.');
-      const t = CONFIG.passTypes[type];
-      if (!t) throw new Error('수강권 종류를 선택해 주세요.');
-      if (Array.isArray(classes)) {
-        const next = normalizeClasses(classes);
-        /* 새로 연 수업은 지키고, 수강권 결에 맞지 않는 수업은 정리 */
-        student.classes = next;
-      } else if (!Array.isArray(student.classes)) {
-        student.classes = OFFLINE_CLASS_IDS.slice();
-      }
-      /* 그 수업에 없는 권종(예: 핸드스탠드에 1회권)은 막습니다 */
-      assertPassFits(student.classes, type);
+      const next = Array.isArray(classes) ? normalizeClasses(classes) : normalizeClasses(student.classes);
+      const offline = offlineOf(next);
 
-      /* 이미 잡혀 있는 예약은 새 수강권에서도 소진으로 계산 */
-      const upcoming = s.bookings.filter((b) => {
-        if (b.studentId !== studentId) return false;
-        const session = sessionFor(b.sessionId);
-        return !!session;
-      }).length;
+      let types = {};
+      if (type && typeof type === 'object' && !Array.isArray(type)) {
+        types = parsePassTypes(type, offline);
+        Object.keys(types).forEach((classId) => {
+          if (offline.indexOf(classId) === -1) {
+            throw new Error('열린 오프라인 수업의 수강권만 부여할 수 있어요.');
+          }
+          assertPassFits([classId], types[classId]);
+        });
+      } else if (type !== undefined && type !== null && type !== '') {
+        const n = Number(type);
+        if (!CONFIG.passTypes[n]) throw new Error('수강권 종류를 선택해 주세요.');
+        if (!offline.length) throw new Error('오프라인 수업을 먼저 열어 주세요.');
+        assertPassFits(offline, n);
+        offline.forEach((classId) => { types[classId] = n; });
+      }
+      if (!Object.keys(types).length) throw new Error('수강권 종류를 선택해 주세요.');
+
+      if (Array.isArray(classes)) student.classes = next;
+      else if (!Array.isArray(student.classes)) student.classes = offline.slice();
+
+      Object.keys(types).forEach((classId) => issuePass(student, classId, types[classId], s));
 
       const now = new Date();
-      student.pass = {
-        type: Number(type),
-        total: t.count,
-        used: Math.min(upcoming, t.count),
-        issuedAt: now.toISOString(),
-        expiresAt: new Date(now.getTime() + t.validDays * 86400000).toISOString(),
-      };
       s.requests
         .filter((r) => r.studentId === studentId && r.status === 'pending')
         .forEach((r) => {
@@ -955,8 +1205,8 @@ const api = (() => {
 
     /* 승인 — 신청한 수업을 한 번에 엽니다.
        이미 열려 있던 수업은 그대로 두고 신청한 수업을 더합니다.
-       type 이 비어 있으면 수강권 없이 수업만 엽니다(온라인 전용 신청). */
-    async approveRequest(requestId, type, classes) {
+       passTypes 가 비어 있으면 수강권 없이 수업만 엽니다(온라인 전용 신청). */
+    async approveRequest(requestId, passTypes, classes) {
       const s = load();
       const req = s.requests.find((r) => r.id === requestId);
       if (!req) throw new Error('요청을 찾을 수 없어요.');
@@ -967,28 +1217,39 @@ const api = (() => {
       const picked = normalizeClasses(Array.isArray(classes) ? classes : req.classes);
       if (!picked.length) throw new Error('수업을 하나 이상 선택해 주세요.');
       const merged = normalizeClasses((student.classes || []).concat(picked));
+      const offlinePicked = offlineOf(picked);
 
-      const wantsPass = !(type === undefined || type === null || type === '' || type === 'none');
-      if (!wantsPass) {
-        if (offlineOf(picked).length) {
+      const raw = passTypes === undefined ? pendingPassTypes(req) : passTypes;
+      const types = parsePassTypes(raw, offlinePicked);
+      Object.keys(types).forEach((classId) => {
+        if (offlinePicked.indexOf(classId) === -1) {
+          throw new Error('수강권은 오프라인 수업에만 고를 수 있어요.');
+        }
+        assertPassFits([classId], types[classId]);
+      });
+      const active = activeOfflineOf(student);
+      offlinePicked.forEach((classId) => {
+        if (!types[classId] && active.indexOf(classId) === -1) {
           throw new Error('오프라인 수업을 열려면 수강권을 골라 주세요.');
         }
-        student.classes = merged;
-        const now = new Date().toISOString();
-        s.requests
-          .filter((r) => r.studentId === student.id && r.status === 'pending')
-          .forEach((r) => {
-            r.status = 'approved';
-            r.resolvedAt = now;
-          });
-        save();
-        return viewStudent(student.id);
-      }
-      return this.grantPass(req.studentId, type, merged);
+      });
+
+      student.classes = merged;
+      Object.keys(types).forEach((classId) => issuePass(student, classId, types[classId], s));
+
+      const now = new Date().toISOString();
+      s.requests
+        .filter((r) => r.studentId === student.id && r.status === 'pending')
+        .forEach((r) => {
+          r.status = 'approved';
+          r.resolvedAt = now;
+        });
+      save();
+      return viewStudent(student.id);
     },
 
     /* ── 강사: 회원 등록 · 수업 접근 관리 ── */
-    async adminRegister({ name, code, classes, passType } = {}) {
+    async adminRegister({ name, code, classes, passType, passTypes } = {}) {
       const s = load();
       const n = String(name || '').trim();
       const c = String(code || '').trim().toUpperCase();
@@ -1002,12 +1263,14 @@ const api = (() => {
         name: n,
         code: c,
         classes: normalizeClasses(classes),
-        pass: null,
+        passes: {},
         createdAt: new Date().toISOString(),
       };
       s.students.push(student);
       save();
-      if (passType) return this.grantPass(student.id, passType, student.classes);
+      const raw = passTypes !== undefined ? passTypes : passType;
+      const types = parsePassTypes(raw, offlineOf(student.classes));
+      if (Object.keys(types).length) return this.grantPass(student.id, types, student.classes);
       return viewStudent(student.id);
     },
 
@@ -1089,7 +1352,10 @@ const api = (() => {
       const sessions = buildSessions(new Date(), CONFIG.bookingWindowDays);
       const students = s.students.map((st) => {
         const v = viewStudent(st.id);
-        return { id: v.id, name: v.name, code: v.code, status: v.status, pass: v.pass, classes: v.classes };
+        return {
+          id: v.id, name: v.name, code: v.code, status: v.status,
+          pass: v.pass, passes: v.passes, classes: v.classes,
+        };
       });
       const nameOf = new Map(students.map((st) => [st.id, st]));
 
@@ -1118,7 +1384,7 @@ const api = (() => {
                 studentId: b.studentId,
                 name: st ? st.name : '—',
                 by: b.by === 'instructor' ? 'instructor' : 'student',
-                passLabel: info && info.pass ? info.pass.label : '',
+                passLabel: info && info.passes[session.classId] ? info.passes[session.classId].label : '',
               };
             }),
         });
@@ -1143,10 +1409,11 @@ const api = (() => {
               id: r.id,
               type: r.type,
               createdAt: r.createdAt,
+              studentId: r.studentId,
               studentName: st ? st.name : '—',
               studentCode: st ? st.code : '',
               classes: reqClasses,
-              passType: r.passType == null ? null : Number(r.passType),
+              passTypes: pendingPassTypes(r),
               /* 이미 열려 있는 수업 (승인하면 여기에 신청 수업이 더해집니다) */
               currentClasses: normalizeClasses(st && st.classes),
               offline: offlineOf(reqClasses).length,

@@ -1248,6 +1248,31 @@ table.track-table tbody th.td-ex {
   color: #8a6a00;
 }
 
+/* 수강권 여러 장 (수업별로 따로) */
+.pass-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.pass-list .pass {
+  margin-bottom: 0;
+}
+
+.pass-label em {
+  font-style: normal;
+  margin-left: 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-45);
+}
+
+.pass-note {
+  margin: -8px 0 18px;
+  font-size: 11px;
+  color: #8a6a00;
+}
+
 /* 상태 배너 */
 .state-banner {
   background: #fff;
@@ -1440,6 +1465,47 @@ table.track-table tbody th.td-ex {
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 6px;
   margin-top: 8px;
+}
+
+/* 수업별 수강권 블록 */
+.pass-group {
+  margin-top: 12px;
+}
+
+.pass-group + .pass-group {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.pass-group-label {
+  font-size: 11px;
+  font-weight: 560;
+  letter-spacing: 0.02em;
+  color: var(--ink-70);
+  word-break: keep-all;
+}
+
+.pass-group-label span {
+  margin-left: 4px;
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--ink-45);
+}
+
+.pass-group-note {
+  margin-top: 5px;
+  font-size: 9.5px;
+  line-height: 1.6;
+  color: var(--ink-45);
+  word-break: keep-all;
+}
+
+.pass-empty {
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--ink-45);
+  word-break: keep-all;
 }
 
 .pass-pick {
@@ -2287,6 +2353,34 @@ dialog.modal--admin {
   justify-content: flex-end;
 }
 
+/* 요청 줄의 수업별 수강권 */
+.req-passes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.req-pass {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.req-pass-name {
+  font-size: 10px;
+  color: var(--ink-45);
+  white-space: nowrap;
+}
+
+.req-pass .select {
+  height: 32px;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .select {
   height: 32px;
   border: 1px solid var(--line-strong);
@@ -2305,6 +2399,30 @@ dialog.modal--admin {
 .grant-row .select {
   height: 36px;
   width: 100%;
+}
+
+/* 수업별 수강권 부여 */
+.grant-passes {
+  display: grid;
+  gap: 6px;
+}
+
+.grant-pass {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.grant-pass > span {
+  font-size: 10.5px;
+  color: var(--ink-45);
+}
+
+.grant-pass .select {
+  height: 34px;
+  width: 100%;
+  min-width: 0;
 }
 
 .grant-hint {
@@ -2341,6 +2459,35 @@ dialog.modal--admin {
 .reg-row .select {
   height: 36px;
   width: 100%;
+}
+
+/* 새 회원 — 오프라인 수업별 수강권 */
+.reg-passgrid {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.reg-passfield {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.reg-passfield[hidden] {
+  display: none;
+}
+
+.reg-passfield > span {
+  font-size: 10.5px;
+  color: var(--ink-45);
+}
+
+.reg-passfield .select {
+  height: 34px;
+  width: 100%;
+  min-width: 0;
 }
 
 /* 수업 체크박스 (강사) */
@@ -2393,6 +2540,11 @@ table.stu-table--cls td {
   margin-top: 5px;
   font-size: 10px;
   color: var(--ink-45);
+}
+
+.pass-line {
+  line-height: 1.5;
+  word-break: keep-all;
 }
 
 .cls-cell {

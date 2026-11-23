@@ -56,8 +56,10 @@
     regOpen: false,     // 등록 신청 폼 열림
     regType: 'register',
     regClasses: [],     // 폼에서 고른 수업
-    regPass: '',        // 폼에서 고른 수강권 ('4' | '8')
+    regPasses: {},      // 폼에서 고른 수업별 수강권 { handstand: '8', functional: '1' }
+    regLivePasses: {},  // 그 수강생이 이미 가진 수강권 (수업별)
     regWarn: false,     // 0개 선택 안내 표시
+    adminGrantStudent: '', // 수강권 부여에서 고른 수강생
   };
 
   /* ── 수업별 접근 제어 ──────────────────────────────────── */
@@ -71,7 +73,7 @@
   /* 데모 수강생 — 4가지 수업을 골고루 확인할 수 있게 */
   const DEMO_STUDENTS = [
     { id: 'st_new', label: '신규 수강생', hint: '김하늘 · 열린 수업 없음' },
-    { id: 'st_offline', label: '오프라인 4회권', hint: '이서연 · 핸드스탠드 + 펑셔널 + 모닝' },
+    { id: 'st_offline', label: '수업별 수강권', hint: '이서연 · 핸드스탠드 4회권 + 펑셔널 4회권 + 모닝' },
     { id: 'st_morning', label: '모닝 모빌리티', hint: '박지우 · 모닝만' },
     { id: 'st_coaching', label: '온라인 코칭', hint: '정민아 · 코칭 + 모닝 + 핸드스탠드' },
   ];
@@ -119,47 +121,49 @@
       return `<p class="class-price"><span class="cp-label">수강권</span>${esc(parts)}</p>`;
     }
     const amount = onlinePriceOf(cls.id);
-    if (amount == null) return `<p class="class-price is-unknown">${esc(PRICES.unknownLabel)}</p>`;
     const info = PRICES.online[cls.id];
+    if (amount == null) return `<p class="class-price is-unknown">${esc(PRICES.unknownLabel)}</p>`;
+    const period = info && info.weeks ? `${info.weeks}주 · ` : '';
     const was = info && info.was
       ? `<span class="cp-was">얼리버드 ${won(info.was.amount)}은 ${shortDateText(info.was.until)} 마감</span>`
       : '';
-    return `<p class="class-price">${won(amount)}${was}</p>`;
+    return `<p class="class-price">${esc(period)}${won(amount)}${was}</p>`;
   }
 
-  /* 고른 수업·수강권으로 계산한 예상 금액
+  /* 고른 수업·수업별 수강권으로 계산한 예상 금액
+     passTypes: { handstand: '8', functional: '1' }
      rows: 화면에 그대로 찍는 줄, confirmed: 확정 금액 합, unknown: 금액 미정 수업 이름 */
-  function priceSummary(picked, passType) {
+  function priceSummary(picked, passTypes) {
     const list = picked || [];
+    const types = passTypes || {};
     const offline = list.filter((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1);
     const online = list.filter((id) => ONLINE_CLASS_IDS.indexOf(id) !== -1);
     const rows = [];
     const unknown = [];
 
     if (offline.length) {
-      /* 수업마다 수강권 금액이 달라서 수업별로 한 줄씩 적고 합산합니다 */
+      /* 수업마다 수강권을 따로 사므로 수업별로 한 줄씩 적고 합산합니다 */
       offline.forEach((id) => {
-        const amount = passType ? passPriceOf(id, passType) : null;
+        const chosen = types[id];
+        const amount = chosen ? passPriceOf(id, Number(chosen)) : null;
         rows.push({
           key: id,
           label: classMeta(id).name,
-          sub: passType ? `수강권 ${CONFIG.passTypes[passType].label}` : '수강권을 고르면 금액이 정해져요',
+          sub: chosen ? `수강권 ${CONFIG.passTypes[Number(chosen)].label}` : '수강권을 고르면 금액이 정해져요',
           amount,
-          pending: !passType,
+          pending: !chosen,
         });
-        if (passType && amount == null) unknown.push(classMeta(id).name);
+        if (chosen && amount == null) unknown.push(classMeta(id).name);
       });
     }
 
     online.forEach((id) => {
       const info = PRICES.online[id];
       const amount = onlinePriceOf(id);
-      rows.push({
-        key: id,
-        label: classMeta(id).name,
-        sub: info && info.was ? `얼리버드 ${won(info.was.amount)}은 ${shortDateText(info.was.until)} 마감` : '',
-        amount,
-      });
+      const sub = info && info.was
+        ? `얼리버드 ${won(info.was.amount)}은 ${shortDateText(info.was.until)} 마감`
+        : (info && info.weeks ? `${info.weeks}주 과정` : '');
+      rows.push({ key: id, label: classMeta(id).name, sub, amount });
       if (amount == null) unknown.push(classMeta(id).name);
     });
 
@@ -175,12 +179,10 @@
     return '별도 안내';
   }
 
-  /* 수강권 카드에 붙는 금액 — 지금 고른 오프라인 수업 기준.
-     수업을 아직 고르지 않았으면 수업마다 금액이 달라서 숫자를 쓰지 않습니다. */
-  function passAmtText(classes, passType) {
-    const list = (classes || []).filter((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1);
-    if (!list.length) return { amount: null, text: '선택 전' };
-    const amount = offlinePassPrice(list, passType);
+  /* 수강권 카드에 붙는 금액 — 그 수업의 고른 권종 */
+  function passAmtText(classId, passType) {
+    if (!classId) return { amount: null, text: '선택 전' };
+    const amount = passPriceOf(classId, passType);
     return { amount, text: amount == null ? PRICES.unknownLabel : won(amount) };
   }
 
@@ -188,28 +190,61 @@
     return Object.keys(CONFIG.passTypes).map(Number).sort((a, b) => a - b);
   }
 
-  /* 이번 선택으로 살 수 있는 수강권 종류 (오프라인 수업이 없으면 전부) */
-  function availablePassTypes(classes) {
-    return passTypesOfClasses(classes || []);
+  /* 수업 하나로 살 수 있는 수강권 종류 (핸드스탠드는 1회권 없음) */
+  function passTypesFor(classId) {
+    const types = passTypesOfClass(classId);
+    return types.length ? types : passTypesAll();
   }
 
-  /* 빠지는 수강권이 있으면 그 이유 한 줄 */
-  function passLimitHint(classes) {
-    const missing = passTypesAll().filter((n) => availablePassTypes(classes).indexOf(n) === -1);
-    if (!missing.length) return '';
-    const who = (classes || [])
-      .filter((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1)
-      .filter((id) => missing.some((n) => passPriceOf(id, n) == null))
-      .map((id) => classMeta(id).name);
-    const labels = missing.map((n) => CONFIG.passTypes[n].label).join(' · ');
-    const usable = availablePassTypes(classes).map((n) => CONFIG.passTypes[n].label).join(' · ');
-    if (!who.length) return '';
-    return `${who.join(' · ')}는 ${labels}을 고를 수 없어요. ${usable} 중에서 골라 주세요.`;
+  /* 등록 폼 안의 수업별 수강권 고르기 — 고른 오프라인 수업마다 한 블록 */
+  function passGroupHTML(classId, current, livePasses) {
+    const types = passTypesFor(classId);
+    const chosen = current && current[classId] ? String(current[classId]) : '';
+    const labels = types.map((n) => CONFIG.passTypes[n].label).join(' · ');
+    return `
+      <div class="pass-group" data-pass-group="${esc(classId)}">
+        <p class="pass-group-label">${esc(classMeta(classId).name)} <span>${esc(labels)}</span></p>
+        ${passGroupNoteHTML(classId, livePasses)}
+        <div class="pass-picks" role="group" aria-label="${esc(classMeta(classId).name)} 수강권 선택 · 하나만">
+          ${types.map((n) => {
+            const amount = passAmtText(classId, n);
+            const t = CONFIG.passTypes[n];
+            const expiry = passValidDays(classId, n);
+            return `
+            <label class="pass-pick" data-pass-opt="${esc(classId)}:${n}">
+              <input class="chk" type="checkbox" name="regPass:${esc(classId)}" value="${n}"${chosen === String(n) ? ' checked' : ''}>
+              <span class="pass-body">
+                <span class="pass-name">${esc(t.label)}</span>
+                <span class="pass-meta">${t.count}회 · ${expiry == null ? '유효기간 없음' : `${expiry}일`}</span>
+                <b class="pass-amt${amount.amount == null ? ' is-unknown' : ''}" data-pass-amt="${esc(classId)}:${n}">${esc(amount.text)}</b>
+              </span>
+            </label>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }
+
+  /* 이미 살아 있는 수강권이 있는 수업 — 새로 고르지 않으면 그대로 둡니다 */
+  function passGroupNoteHTML(classId, livePasses) {
+    const pv = livePasses && livePasses[classId];
+    if (!pv || !pv.active) return '';
+    return `<p class="pass-group-note">이미 ${esc(pv.label)} 사용 중 · ${pv.remaining}/${pv.total} 남음 — 새로 고르면 새 수강권으로 교체됩니다</p>`;
+  }
+
+  /* 등록 폼의 수강권 영역 전체 */
+  function regPassBlockHTML(picked, passTypes, livePasses) {
+    const offline = (picked || []).filter((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1);
+    if (!offline.length) {
+      return '<p class="pass-empty">오프라인 수업을 고르면 수업별 수강권을 고를 수 있어요. 온라인만 신청하면 수강권 없이 이용합니다.</p>';
+    }
+    return `
+      <p class="reg-pass-label">수강권 <span>수업마다 따로 고르세요</span></p>
+      ${offline.map((id) => passGroupHTML(id, passTypes, livePasses)).join('')}`;
   }
 
   /* 등록 폼 안의 예상 결제 금액 블록 */
-  function priceBlockHTML(picked, passType) {
-    const summary = priceSummary(picked, passType);
+  function priceBlockHTML(picked, passTypes) {
+    const summary = priceSummary(picked, passTypes);
     if (!summary.rows.length) {
       return '<p class="rp-empty">수업을 고르면 예상 결제 금액이 여기에 표시됩니다.</p>';
     }
@@ -239,12 +274,15 @@
       ${note}`;
   }
 
-  /* 신청서에 적힌 수업·수강권 한 줄 */
+  /* 신청서에 적힌 수업·수강권 한 줄 (수업별 권종) */
   function pendingLineHTML(v) {
     if (!v || !v.pending) return '';
-    const names = classNamesText(v.pending.classes);
-    const pass = v.pending.passType ? ` · ${v.pending.passType}회권` : '';
-    return `<p class="state-line"><span class="state-line-label">신청 수업</span>${esc(names || '—')}${esc(pass)}</p>`;
+    const names = (v.pending.classes || []).map((id) => {
+      const type = v.pending.passTypes ? v.pending.passTypes[id] : null;
+      const base = classMeta(id).name;
+      return type ? `${base} ${CONFIG.passTypes[type] ? CONFIG.passTypes[type].label : `${type}회권`}` : base;
+    }).join(' · ');
+    return `<p class="state-line"><span class="state-line-label">신청 수업</span>${esc(names || '—')}</p>`;
   }
 
   /* 로그인 상태에 따라 볼 수 있는 섹션만 남깁니다 */
@@ -354,11 +392,57 @@
   }
 
   function dday(expiresAt) {
+    if (!expiresAt) return '';
     const ms = new Date(expiresAt).getTime() - Date.now();
     const days = Math.ceil(ms / 86400000);
     if (days < 0) return '기간 만료';
     if (days === 0) return '오늘까지';
     return `D-${days}`;
+  }
+
+  /* 수강권 한 장 — 수업 이름·권종·잔여 횟수·유효기간 */
+  function passCardHTML(pv, v) {
+    if (!pv) return '';
+    const cls = classMeta(pv.classId);
+    const usedCount = pv.used;
+    const booked = (v && v.bookingsByClass && v.bookingsByClass[pv.classId]) || 0;
+    const expiry = pv.noExpiry
+      ? '<span>유효기간 없음</span>'
+      : `<span>유효기간 ${fullDate(new Date(pv.expiresAt))}까지</span><span>${esc(dday(pv.expiresAt))}</span>`;
+    const warn = pv.expired
+      ? '<span class="pass-warn">기간 만료</span>'
+      : (pv.remaining <= 0 ? '<span class="pass-warn">횟수 소진</span>' : '');
+    return `
+      <div class="pass">
+        <div class="pass-top">
+          <span class="pass-label">${esc(cls.name)} <em>${esc(pv.label)}</em></span>
+          <span class="pass-remain"><b>${pv.remaining}</b> / ${pv.total}회 남음</span>
+        </div>
+        <div class="dots" aria-label="${esc(cls.name)} 잔여 ${pv.remaining}회">${passDots(pv)}</div>
+        <div class="pass-meta">
+          ${expiry}
+          <span>사용 ${usedCount}회 · 예약 ${booked}건</span>
+          ${warn}
+        </div>
+      </div>`;
+  }
+
+  /* 로그인한 수강생의 수강권 — 수업마다 따로 */
+  function passListHTML(v) {
+    const ids = v && v.passes ? Object.keys(v.passes) : [];
+    if (!ids.length) return '';
+    return `<div class="pass-list">${ids.map((id) => passCardHTML(v.passes[id], v)).join('')}</div>`;
+  }
+
+  /* 수강권 한 줄 요약 — 핸드스탠드 2/4 · 펑셔널 3/4(유효기간 없음) */
+  function passSummaryText(v) {
+    const ids = v && v.passes ? Object.keys(v.passes) : [];
+    if (!ids.length) return '';
+    return ids.map((id) => {
+      const pv = v.passes[id];
+      const expiry = pv.noExpiry ? '(유효기간 없음)' : '';
+      return `${classMeta(id).short} ${pv.remaining}/${pv.total}${expiry}`;
+    }).join(' · ');
   }
 
   function statusText(v) {
@@ -368,9 +452,10 @@
     if (!offline.length && online.length) {
       return `온라인 클래스 수강 중 · ${online.map((id) => classMeta(id).name).join(' · ')}`;
     }
-    if (v.status === 'active') return `${v.pass.label} 사용 중`;
+    const summary = passSummaryText(v);
+    if (v.status === 'active') return summary ? `수강권 사용 중 · ${summary}` : '수강권 사용 중';
     if (v.status === 'pending') return v.pending.type === 'renewal' ? '재등록 요청 확인 중' : '등록 신청 확인 중';
-    if (v.status === 'exhausted') return `${v.pass.label} 사용 완료`;
+    if (v.status === 'exhausted') return summary ? `수강권 사용 완료 · ${summary}` : '수강권 사용 완료';
     return '수강권 없음 · 신규 수강생';
   }
 
@@ -450,19 +535,8 @@
 
     if (v.status === 'active') {
       return `
-        <div class="pass">
-          <div class="pass-top">
-            <span class="pass-label">${esc(v.pass.label)}</span>
-            <span class="pass-remain"><b>${v.pass.remaining}</b> / ${v.pass.total}회 남음</span>
-          </div>
-          <div class="dots" aria-label="잔여 ${v.pass.remaining}회">${passDots(v.pass)}</div>
-          <div class="pass-meta">
-            <span>유효기간 ${fullDate(new Date(v.pass.expiresAt))}까지</span>
-            <span>${esc(dday(v.pass.expiresAt))}</span>
-            <span>사용 ${v.pass.used}회 · 예약 ${v.bookings.length}건</span>
-            ${v.pending ? '<span class="pass-warn">재등록 요청 확인 중</span>' : ''}
-          </div>
-        </div>`;
+        ${passListHTML(v)}
+        ${v.pending ? '<p class="pass-note">재등록 요청 확인 중</p>' : ''}`;
     }
 
     if (v.status === 'pending') {
@@ -479,15 +553,12 @@
     }
 
     if (v.status === 'exhausted') {
-      const p = v.pass;
-      const reason = p.expired && p.remaining > 0
-        ? `유효기간(${fullDate(new Date(p.expiresAt))})이 지났어요. 남은 ${p.remaining}회는 사용할 수 없습니다.`
-        : `${p.label} ${p.used}/${p.total}회를 모두 사용했어요. (${fullDate(new Date(p.expiresAt))} 만료)`;
       return `
         <div class="state-banner">
           <p class="state-title">수강권을 다시 등록해야 해요</p>
-          <p class="state-sub">${esc(reason)} 재등록을 요청하면 강사 확인 후 새 수강권이 열립니다.</p>
+          <p class="state-sub">${esc(passReasonText(v))} 재등록을 요청하면 강사 확인 후 새 수강권이 열립니다.</p>
         </div>
+        ${passListHTML(v)}
         ${registerButtonHTML('renewal')}`;
     }
 
@@ -495,11 +566,29 @@
       <div class="state-banner">
         <p class="state-title">아직 수강권이 없어요</p>
         <p class="state-sub">
-          수강권은 4회권과 8회권이 있어요. 아래 버튼으로 등록을 신청하면
-          강사가 확인하고 수강권을 개설해 드립니다.
+          오프라인 수업은 수업마다 수강권을 따로 신청합니다 — 핸드스탠드 무브먼트 4·8회권,
+          펑셔널 요가 1·4·8회권. 아래 버튼으로 신청하면 강사가 확인하고 수강권을 개설해 드립니다.
         </p>
       </div>
       ${registerButtonHTML('register')}`;
+  }
+
+  /* 수강권을 다시 등록해야 하는 이유 — 수업별로 */
+  function passReasonText(v) {
+    const ids = v && v.passes ? Object.keys(v.passes) : [];
+    if (!ids.length) return '';
+    const parts = ids.map((id) => {
+      const pv = v.passes[id];
+      const name = classMeta(id).short;
+      if (pv.expired && pv.remaining > 0) {
+        return `${name} 유효기간(${fullDate(new Date(pv.expiresAt))})이 지나 남은 ${pv.remaining}회를 쓸 수 없어요`;
+      }
+      if (pv.expired) {
+        return `${name} ${pv.label} 유효기간(${fullDate(new Date(pv.expiresAt))})이 지났어요`;
+      }
+      return `${name} ${pv.label} ${pv.used}/${pv.total}회를 모두 사용했어요`;
+    });
+    return `${parts.join(' · ')}.`;
   }
 
   /* ── 등록 신청 폼 ─────────────────────────────────────── */
@@ -516,6 +605,7 @@
   function registerFormHTML(type) {
     const picked = UI.regClasses || [];
     const hasOffline = picked.some((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1);
+    const livePasses = UI.regLivePasses || {};
 
     return `
     <form class="reg-form" id="registerForm" novalidate>
@@ -534,23 +624,7 @@
       </div>
 
       <div class="reg-pass${hasOffline ? '' : ' is-muted'}" data-reg-pass>
-        <p class="reg-pass-label">수강권 <span>오프라인 수업을 고르면 필요해요</span></p>
-        <div class="pass-picks" role="group" aria-label="수강권 선택 · 하나만">
-          ${passTypesAll().map((n) => {
-            const amount = passAmtText(hasOffline ? picked : [], n);
-            const usable = !hasOffline || availablePassTypes(picked).indexOf(n) !== -1;
-            return `
-            <label class="pass-pick" data-pass-opt="${n}"${usable ? '' : ' hidden'}>
-              <input class="chk" type="checkbox" name="regPass" value="${n}"${String(UI.regPass) === String(n) ? ' checked' : ''}${hasOffline ? '' : ' disabled'}>
-              <span class="pass-body">
-                <span class="pass-name">${CONFIG.passTypes[n].label}</span>
-                <span class="pass-meta">${CONFIG.passTypes[n].count}회 · ${CONFIG.passTypes[n].validDays}일</span>
-                <b class="pass-amt${amount.amount == null ? ' is-unknown' : ''}" data-pass-amt="${n}">${esc(amount.text)}</b>
-              </span>
-            </label>`;
-          }).join('')}
-        </div>
-        <p class="pass-hint" data-pass-hint${hasOffline && availablePassTypes(picked).length < passTypesAll().length ? '' : ' hidden'}>${esc(passLimitHint(picked))}</p>
+        ${regPassBlockHTML(picked, UI.regPasses, livePasses)}
       </div>
 
       <p class="reg-note" data-reg-note>${!picked.length
@@ -561,7 +635,7 @@
       <p class="reg-warn" data-reg-warn${UI.regWarn && !picked.length ? '' : ' hidden'}>수업을 하나 이상 선택해 주세요.</p>
       <p class="reg-count" data-reg-count>선택한 수업 ${picked.length}개${picked.length ? ` · ${esc(classNamesText(picked))}` : ''}</p>
 
-      <div class="reg-price" data-reg-price>${priceBlockHTML(picked, UI.regPass)}</div>
+      <div class="reg-price" data-reg-price>${priceBlockHTML(picked, UI.regPasses)}</div>
 
       <div class="reg-form-foot">
         <button class="btn btn-butter btn-wide" type="submit" data-register-submit${picked.length ? '' : ' disabled'}>
@@ -573,7 +647,7 @@
   }
 
   /* 폼 안에서 체크를 바꿀 때, 다시 그리지 않고 상태만 맞춥니다 (레이아웃 밀림 없음) */
-  function syncRegisterForm() {
+  function syncRegisterForm(options = {}) {
     const form = $('#registerForm');
     if (!form) return;
     const picked = UI.regClasses;
@@ -586,33 +660,28 @@
     if (warn) warn.hidden = !(UI.regWarn && !picked.length);
 
     const passBox = form.querySelector('[data-reg-pass]');
-    if (passBox) passBox.classList.toggle('is-muted', !hasOffline);
-
-    /* 이번 수업으로 살 수 있는 수강권만 남깁니다 (핸드스탠드는 1회권 없음) */
-    const usable = hasOffline ? availablePassTypes(picked) : passTypesAll();
-    if (UI.regPass && usable.indexOf(Number(UI.regPass)) === -1) UI.regPass = '';
-    form.querySelectorAll('[data-pass-opt]').forEach((label) => {
-      const n = Number(label.dataset.passOpt);
-      label.hidden = usable.indexOf(n) === -1;
-      const input = label.querySelector('input');
-      if (!input) return;
-      input.disabled = !hasOffline;
-      input.checked = String(UI.regPass) === String(n);
-    });
-
-    const hint = form.querySelector('[data-pass-hint]');
-    if (hint) {
-      const text = hasOffline ? passLimitHint(picked) : '';
-      hint.textContent = text;
-      hint.hidden = !text;
+    if (passBox) {
+      passBox.classList.toggle('is-muted', !hasOffline);
+      /* 수업을 고치면 그 수업의 수강권 블록도 따라 바뀝니다 */
+      if (options.rebuildPass !== false) {
+        passBox.innerHTML = regPassBlockHTML(picked, UI.regPasses, UI.regLivePasses || {});
+      }
     }
+
+    /* 수강권 카드 금액 */
+    form.querySelectorAll('[data-pass-amt]').forEach((el) => {
+      const [classId, n] = String(el.dataset.passAmt || '').split(':');
+      const info = passAmtText(classId, n);
+      el.textContent = info.text;
+      el.classList.toggle('is-unknown', info.amount == null);
+    });
 
     const note = form.querySelector('[data-reg-note]');
     if (note) {
       note.textContent = !picked.length
         ? '수업을 고르면 수강권 안내가 함께 바뀝니다.'
         : hasOffline
-          ? '오프라인 수업은 수강권으로 예약합니다. 수업마다 쓸 수 있는 수강권이 달라요.'
+          ? '오프라인 수업은 수강권으로 예약합니다. 수업마다 수강권을 따로 고르세요.'
           : '온라인만 신청하면 수강권 없이 이용합니다.';
     }
 
@@ -621,16 +690,20 @@
       count.textContent = `선택한 수업 ${picked.length}개${picked.length ? ` · ${classNamesText(picked)}` : ''}`;
     }
 
-    /* 수강권 카드 금액 — 지금 고른 오프라인 수업 기준 */
-    form.querySelectorAll('[data-pass-amt]').forEach((el) => {
-      const info = passAmtText(hasOffline ? picked : [], el.dataset.passAmt);
-      el.textContent = info.text;
-      el.classList.toggle('is-unknown', info.amount == null);
-    });
-
     /* 예상 결제 금액 */
     const priceBox = form.querySelector('[data-reg-price]');
-    if (priceBox) priceBox.innerHTML = priceBlockHTML(picked, UI.regPass);
+    if (priceBox) priceBox.innerHTML = priceBlockHTML(picked, UI.regPasses);
+  }
+
+  /* 수강권 하나만 선택 — 누른 것만 남기고, 누른 걸 다시 눌러도 유지 */
+  function pickPassInForm(input) {
+    const classId = String(input.name || '').split(':')[1] || '';
+    const group = input.closest('[data-pass-group]');
+    if (group) {
+      group.querySelectorAll('input[type="checkbox"]').forEach((box) => { box.checked = box === input; });
+    }
+    input.checked = true;
+    if (classId) UI.regPasses[classId] = input.value;
   }
 
   function sessionRowHTML(session, v) {
@@ -656,8 +729,15 @@
         sub = `취소 마감 · ${shortDate(deadline)} ${timeHM(deadline)}`;
         action = '<span class="badge">예약 완료</span><span class="cap">취소 마감</span>';
       }
-    } else if (v.status === 'active') {
-      action = `<button class="btn-mini btn-mini--butter" type="button" data-book="${esc(session.id)}">예약</button>`;
+    } else if (v.status === 'active' || (v.passes && v.passes[session.classId])) {
+      /* 그 수업의 수강권만 봅니다 */
+      const pv = v.passes ? v.passes[session.classId] : null;
+      if (pv && pv.active) {
+        action = `<button class="btn-mini btn-mini--butter" type="button" data-book="${esc(session.id)}">예약</button>`;
+      } else {
+        const label = pv && pv.remaining <= 0 ? '횟수 소진' : '수강권 만료';
+        action = `<button class="btn-mini" type="button" disabled>${esc(label)}</button>`;
+      }
     } else if (v.status === 'pending') {
       action = '<button class="btn-mini" type="button" disabled>승인 대기</button>';
     } else {
@@ -797,8 +877,14 @@
         UI.regOpen = true;
         UI.regType = type === 'renewal' ? 'renewal' : 'register';
         UI.regWarn = false;
-        UI.regPass = '';
+        UI.regLivePasses = (v && v.passes) ? v.passes : {};
         UI.regClasses = (v && v.classes ? v.classes.slice() : []);
+        /* 아직 살아 있는 수강권은 그대로 두고, 만료·소진된 수강권만 같은 권종으로 미리 골라 둡니다 */
+        UI.regPasses = {};
+        Object.keys(UI.regLivePasses).forEach((id) => {
+          const pv = UI.regLivePasses[id];
+          if (!pv.active) UI.regPasses[id] = String(pv.type);
+        });
         await renderBooking();
         const form = $('#registerForm');
         if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -810,7 +896,8 @@
         UI.regOpen = false;
         UI.regWarn = false;
         UI.regClasses = [];
-        UI.regPass = '';
+        UI.regPasses = {};
+        UI.regLivePasses = {};
         await renderBooking();
         return;
       }
@@ -822,7 +909,8 @@
         UI.onlinePicked = false;
         UI.regOpen = false;
         UI.regClasses = [];
-        UI.regPass = '';
+        UI.regPasses = {};
+        UI.regLivePasses = {};
         saveCurrent();
         await renderBooking();
         toast('로그아웃했어요.');
@@ -849,13 +937,11 @@
         return;
       }
 
-      /* 수강권은 하나만 — 체크박스 모양이지만 누른 것만 남기고, 누른 걸 다시 눌러도 유지 */
-      if (event.target.name === 'regPass') {
-        const passBoxes = Array.from(form.querySelectorAll('input[name="regPass"]'));
-        passBoxes.forEach((box) => { box.checked = box === event.target; });
-        event.target.checked = true;
-        UI.regPass = event.target.value;
-        syncRegisterForm();
+      /* 수업별 수강권은 각각 하나만 — 체크박스 모양이지만 누른 것만 남기고, 누른 걸 다시 눌러도 유지 */
+      const passInput = event.target.closest('[data-pass-group] input[type="checkbox"]');
+      if (passInput) {
+        pickPassInForm(passInput);
+        syncRegisterForm({ rebuildPass: false });
       }
     });
 
@@ -875,19 +961,24 @@
         toast('수업을 하나 이상 선택해 주세요.', true);
         return;
       }
-      if (hasOffline && !UI.regPass) {
-        toast('오프라인 수업은 수강권을 골라 주세요.', true);
+      /* 오프라인 수업은 수업마다 수강권이 필요합니다 (이미 살아 있는 수강권은 그대로) */
+      const missing = picked.filter((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1
+        && !UI.regPasses[id]
+        && !(UI.regLivePasses[id] && UI.regLivePasses[id].active));
+      if (missing.length) {
+        toast(`${classMeta(missing[0]).name} 수강권을 골라 주세요.`, true);
         return;
       }
 
       const submitBtn = form.querySelector('[data-register-submit]');
       if (submitBtn) submitBtn.disabled = true;
       try {
-        await api.request(UI.studentId, type, picked, { passType: hasOffline ? UI.regPass : null });
+        await api.request(UI.studentId, type, picked, { passTypes: UI.regPasses });
         UI.regOpen = false;
         UI.regWarn = false;
         UI.regClasses = [];
-        UI.regPass = '';
+        UI.regPasses = {};
+        UI.regLivePasses = {};
         await renderBooking();
         toast(type === 'renewal' ? '재등록 요청을 보냈어요.' : '등록 신청을 보냈어요.');
       } catch (err) {
@@ -906,7 +997,8 @@
         UI.onlinePicked = false;
         UI.regOpen = false;
         UI.regClasses = [];
-        UI.regPass = '';
+        UI.regPasses = {};
+        UI.regLivePasses = {};
         saveCurrent();
         await renderBooking();
       });
@@ -924,7 +1016,8 @@
           UI.onlinePicked = false;
           UI.regOpen = false;
           UI.regClasses = [];
-          UI.regPass = '';
+          UI.regPasses = {};
+          UI.regLivePasses = {};
           saveCurrent();
           form.reset();
           await renderBooking();
@@ -1420,10 +1513,19 @@
 
   function adminStudentsHTML(students) {
     const rows = students.map((s) => {
-      const pass = s.pass ? `${s.pass.label} ${s.pass.remaining}/${s.pass.total}` : '수강권 없음';
       const classes = s.classes || [];
-      const onlineOnly = !classes.some((c) => OFFLINE_CLASS_IDS.indexOf(c) !== -1)
-        && classes.some((c) => ONLINE_CLASS_IDS.indexOf(c) !== -1);
+      const offline = classes.filter((c) => OFFLINE_CLASS_IDS.indexOf(c) !== -1);
+      /* 수업별 잔여 횟수 — 핸드스탠드 2/4 · 펑셔널 3/4(유효기간 없음) */
+      const pass = offline.length
+        ? offline.map((id) => {
+          const pv = s.passes ? s.passes[id] : null;
+          if (!pv) return `${classMeta(id).short} 수강권 없음`;
+          const expiry = pv.noExpiry ? '(유효기간 없음)' : '';
+          const state = pv.expired ? ' 만료' : '';
+          return `${classMeta(id).short} ${pv.remaining}/${pv.total}${expiry}${state}`;
+        }).join(' · ')
+        : '수강권 없음';
+      const onlineOnly = !offline.length && classes.some((c) => ONLINE_CLASS_IDS.indexOf(c) !== -1);
       const statusLabel = s.status === 'new' && onlineOnly
         ? '온라인'
         : ({
@@ -1439,7 +1541,7 @@
             <span class="req-sub">${esc(s.code)}</span>
             <span class="stu-cell-meta">
               <span class="pill${s.status === 'active' ? ' is-active' : ''}">${esc(statusLabel)}</span>
-              <span>${esc(pass)}</span>
+              <span class="pass-line">${esc(pass)}</span>
             </span>
           </td>
           <td class="cls-cell">${classPicksHTML(s.classes, 'data-cls-student', s.id)}</td>
@@ -1530,8 +1632,8 @@
     UI.adminStudent = picked;
 
     const studentOptions = students.map((s) => {
-      const p = s.pass;
-      const remain = p ? ` (${p.remaining}회 남음)` : '';
+      const summary = passSummaryText(s);
+      const remain = summary ? ` (${summary})` : '';
       return `<option value="${esc(s.id)}"${s.id === picked ? ' selected' : ''}>${esc(s.name)} · ${esc(s.code)}${esc(remain)}</option>`;
     }).join('');
 
@@ -1563,31 +1665,93 @@
       </div>`).join('');
   }
 
-  /* 수강권 선택지 — 그 수업들로 살 수 있는 종류만 */
+  /* 수강권 선택지 — 그 수업으로 살 수 있는 종류만 */
   function passOptionList(selected, options) {
     const opts = options || {};
     const types = opts.types || passTypesAll();
     const cur = selected == null ? '' : String(selected);
     const none = opts.allowNone
-      ? `<option value=""${cur === '' ? ' selected' : ''}>수강권 없음</option>`
+      ? `<option value=""${cur === '' ? ' selected' : ''}>${esc(opts.noneLabel || '수강권 없음')}</option>`
       : '';
     const list = types.map((n) => {
       const t = CONFIG.passTypes[n];
-      return `<option value="${n}"${cur === String(n) ? ' selected' : ''}>${t.label} · ${t.validDays}일</option>`;
+      const days = opts.classId ? passValidDays(opts.classId, n) : t.validDays;
+      return `<option value="${n}"${cur === String(n) ? ' selected' : ''}>${t.label} · ${days == null ? '유효기간 없음' : `${days}일`}</option>`;
     }).join('');
     return none + list;
   }
 
+  /* 신청한 수업 목록을 수업별 권종과 함께 한 줄로 — 핸드스탠드 8회권 · 펑셔널 1회권 */
+  function pickedText(classes, passTypes) {
+    return (classes || []).map((id) => {
+      const type = passTypes ? passTypes[id] : null;
+      return `${classMeta(id).name}${type && CONFIG.passTypes[type] ? ` ${CONFIG.passTypes[type].label}` : ''}`;
+    }).join(' · ');
+  }
+
   /* 강사 요청 줄 — 신청 금액 (확정된 금액만, 미정은 별도 안내) */
-  function reqPriceHTML(classes, passType) {
-    const summary = priceSummary(classes, passType);
+  function reqPriceHTML(classes, passTypes) {
+    const summary = priceSummary(classes, passTypes);
     if (!summary.rows.length) return '';
     const confirmed = summary.confirmed ? won(summary.confirmed) : '';
     const extra = summary.unknown.length
-      ? `별도 안내 (${esc(summary.unknown.join(' · '))})`
+      ? `별도 안내 (${summary.unknown.join(' · ')})`
       : '';
     const parts = [confirmed, extra].filter(Boolean).join(' + ');
     return `결제 예상 <b>${parts}</b>`;
+  }
+
+  /* 수강권 부여 — 수강생을 고르면 그 수강생의 오프라인 수업별로 권종을 골라 부여합니다 */
+  function adminGrantHTML(data) {
+    const students = (data.students || []).filter(
+      (s) => (s.classes || []).some((c) => OFFLINE_CLASS_IDS.indexOf(c) !== -1),
+    );
+    if (!students.length) {
+      return '<p class="admin-empty">오프라인 수업을 듣는 수강생이 없어요. 먼저 수업을 열어 주세요.</p>';
+    }
+    const pickedId = students.some((s) => s.id === UI.adminGrantStudent)
+      ? UI.adminGrantStudent
+      : students[0].id;
+    UI.adminGrantStudent = pickedId;
+    const student = students.find((s) => s.id === pickedId);
+    const offline = (student.classes || []).filter((c) => OFFLINE_CLASS_IDS.indexOf(c) !== -1);
+
+    const selects = offline.map((id) => {
+      const pv = student.passes ? student.passes[id] : null;
+      const def = pv ? pv.type : passTypesFor(id)[0];
+      return `
+        <label class="grant-pass">
+          <span>${esc(classMeta(id).short)}</span>
+          <select class="select" data-grant-pass="${esc(id)}" aria-label="${esc(classMeta(id).name)} 수강권">
+            ${passOptionList(def, { types: passTypesFor(id), classId: id })}
+          </select>
+        </label>`;
+    }).join('');
+
+    return `
+      <div class="grant-row">
+        <select class="select" id="grantStudent" aria-label="수강생">
+          ${students.map((s) => `<option value="${esc(s.id)}"${s.id === pickedId ? ' selected' : ''}>${esc(s.name)} · ${esc(s.code)}</option>`).join('')}
+        </select>
+        <div class="grant-passes">${selects}</div>
+        <button class="btn-mini btn-mini--butter" type="button" data-grant>부여</button>
+      </div>`;
+  }
+
+  /* 강사 요청 줄에서 지금 체크된 수업 / 고른 수업별 수강권 */
+  function reqClassesOfRow(row) {
+    const holder = row ? row.querySelector('[data-req-cls]') : null;
+    return holder ? Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value) : [];
+  }
+
+  function reqPassTypesOfRow(row) {
+    const out = {};
+    if (!row) return out;
+    row.querySelectorAll('[data-req-pass]').forEach((sel) => {
+      const classId = String(sel.dataset.reqPass || '').split(':')[1];
+      if (classId && sel.value) out[classId] = sel.value;
+    });
+    return out;
   }
 
   let ADMIN_DATA = null;
@@ -1600,36 +1764,50 @@
 
     const requests = data.pending.length
       ? data.pending.map((req) => {
-        const names = classNamesText(req.classes);
+        const student = data.students.find((s) => s.id === req.studentId);
+        const livePasses = (student && student.passes) || {};
+        const reqTypes = req.passTypes || {};
+        const offline = req.classes.filter((id) => OFFLINE_CLASS_IDS.indexOf(id) !== -1);
         const keptOnly = (req.currentClasses || []).filter((id) => req.classes.indexOf(id) === -1);
-        const defaultPass = req.offline ? (req.passType || 4) : (req.passType || '');
-        const pref = req.passType ? ` · 희망 ${req.passType}회권` : (req.offline ? '' : ' · 수강권 없이 온라인만');
+        const pref = req.offline
+          ? ''
+          : (req.passTypes && Object.keys(req.passTypes).length ? '' : ' · 수강권 없이 온라인만');
+        const passSelects = offline.map((id) => {
+          const live = livePasses[id];
+          const chosen = reqTypes[id] || (live && live.active ? '' : (passTypesFor(id)[0] || ''));
+          const noneLabel = live && live.active
+            ? `그대로 (${live.label} ${live.remaining}/${live.total})`
+            : '수강권 없음';
+          return `
+            <label class="req-pass">
+              <span class="req-pass-name">${esc(classMeta(id).short)}</span>
+              <select class="select" data-req-pass="${esc(req.id)}:${esc(id)}" aria-label="${esc(classMeta(id).name)} 수강권">
+                ${passOptionList(chosen, {
+                  allowNone: true,
+                  noneLabel,
+                  types: passTypesFor(id),
+                  classId: id,
+                })}
+              </select>
+            </label>`;
+        }).join('');
         return `
           <div class="req-row">
             <div class="req-main">
               <b>${esc(req.studentName)}</b> <span class="req-code">${esc(req.studentCode || '')}</span> · ${esc(requestTypeLabel(req.type))}
               <span class="req-sub">${fullDate(new Date(req.createdAt))} ${timeHM(new Date(req.createdAt))}</span>
-              <span class="req-picked">신청 수업 ${esc(names || '—')}${esc(pref)}</span>
-              <span class="req-price" data-req-price>${reqPriceHTML(req.classes, req.offline ? defaultPass : '')}</span>
+              <span class="req-picked">신청 수업 ${esc(pickedText(req.classes, reqTypes) || '—')}${esc(pref)}</span>
+              <span class="req-price" data-req-price>${reqPriceHTML(req.classes, reqTypes)}</span>
               ${keptOnly.length ? `<span class="req-kept">이미 열린 수업 ${esc(classNamesText(keptOnly))} 은 그대로 유지</span>` : ''}
             </div>
             <div class="req-act">
               ${classPicksHTML(req.classes, 'data-req-cls', req.id)}
-              <select class="select" data-req-type="${esc(req.id)}" aria-label="부여할 수강권">
-                ${passOptionList(defaultPass, {
-                  allowNone: true,
-                  types: availablePassTypes(req.classes),
-                })}
-              </select>
+              ${passSelects ? `<div class="req-passes">${passSelects}</div>` : ''}
               <button class="btn-mini btn-mini--butter" type="button" data-approve="${esc(req.id)}">승인 · 개시</button>
             </div>
           </div>`;
       }).join('')
       : '<p class="admin-empty">확인할 요청이 없어요.</p>';
-
-    const studentOptions = data.students
-      .map((s) => `<option value="${esc(s.id)}">${esc(s.name)} · ${esc(s.code)}</option>`)
-      .join('');
 
     body.innerHTML = `
       <section class="admin-block">
@@ -1644,13 +1822,19 @@
           <input class="reg-input" id="regCode" type="text" placeholder="수강 코드 (MJ-3001)" aria-label="새 회원 수강 코드">
         </div>
         ${classPicksHTML([], 'data-reg-cls', 'new')}
+        <div class="reg-passgrid" data-reg-passgrid>
+          ${OFFLINE_CLASS_IDS.map((id) => `
+            <label class="reg-passfield" data-reg-passfield="${esc(id)}" hidden>
+              <span>${esc(classMeta(id).short)}</span>
+              <select class="select" data-reg-pass="${esc(id)}" aria-label="${esc(classMeta(id).name)} 수강권">
+                ${passOptionList(passTypesFor(id)[0], { types: passTypesFor(id), classId: id })}
+              </select>
+            </label>`).join('')}
+        </div>
         <div class="reg-row">
-          <select class="select" id="regPass" aria-label="수강권 종류">
-            ${passOptionList('', { allowNone: true })}
-          </select>
           <button class="btn-mini btn-mini--butter" type="button" data-register>회원 등록</button>
         </div>
-        <p class="grant-hint">체크한 수업만 회원 화면에 보입니다. 오프라인 수업(핸드스탠드·펑셔널)은 수강권이 있어야 예약할 수 있고, 온라인 수업은 체크·노트가 열립니다.</p>
+        <p class="grant-hint">체크한 수업만 회원 화면에 보입니다. 오프라인 수업(핸드스탠드·펑셔널)은 그 수업의 수강권이 있어야 예약할 수 있고, 온라인 수업은 체크·노트가 열립니다.</p>
       </section>
 
       <section class="admin-block">
@@ -1660,15 +1844,9 @@
       </section>
 
       <section class="admin-block">
-        <div class="admin-h"><h4>수강권 부여 / grant</h4><span></span></div>
-        <div class="grant-row">
-          <select class="select" id="grantStudent" aria-label="수강생">${studentOptions}</select>
-          <select class="select" id="grantType" aria-label="수강권 종류">
-            ${passOptionList(4)}
-          </select>
-          <button class="btn-mini btn-mini--butter" type="button" data-grant>부여</button>
-        </div>
-        <p class="grant-hint">부여하면 잔여 횟수가 새로 시작됩니다. 이미 사용 중인 수강권이 있으면 새 수강권으로 교체되고, 남은 횟수는 넘어가지 않아요.</p>
+        <div class="admin-h"><h4>수강권 부여 / grant</h4><span>수업별</span></div>
+        <div data-grant-box>${adminGrantHTML(data)}</div>
+        <p class="grant-hint">부여한 수업의 잔여 횟수가 새로 시작됩니다. 그 수업에 이미 수강권이 있으면 교체되고 남은 횟수는 넘어가지 않아요. 다른 수업의 수강권은 그대로입니다.</p>
       </section>
 
       <section class="admin-block">
@@ -1719,41 +1897,39 @@
         return;
       }
 
-      /* 강사 요청 줄 — 수강권 종류나 수업 체크를 바꾸면 금액을 다시 계산 */
-      const reqTypeSelect = event.target.closest('[data-req-type]');
-      if (reqTypeSelect) {
-        const row = reqTypeSelect.closest('.req-row');
-        const holder = row ? row.querySelector('[data-req-cls]') : null;
-        const classes = holder
-          ? Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value)
-          : [];
-        const priceEl = row ? row.querySelector('[data-req-price]') : null;
-        if (priceEl) priceEl.innerHTML = reqPriceHTML(classes, reqTypeSelect.value);
+      /* 수강권 부여에서 수강생을 바꾸면 그 수강생의 수업별 선택만 다시 그립니다 */
+      if (event.target.closest('#grantStudent')) {
+        UI.adminGrantStudent = event.target.value;
+        const box = body.querySelector('[data-grant-box]');
+        if (box && ADMIN_DATA) box.innerHTML = adminGrantHTML(ADMIN_DATA);
         return;
       }
 
-      /* 새 회원 — 체크한 수업에 없는 수강권은 빼고 보여 줍니다 */
+      /* 강사 요청 줄 — 수강권 종류나 수업 체크를 바꾸면 금액을 다시 계산 */
+      const reqPassSelect = event.target.closest('[data-req-pass]');
+      if (reqPassSelect) {
+        const row = reqPassSelect.closest('.req-row');
+        const priceEl = row ? row.querySelector('[data-req-price]') : null;
+        if (priceEl) priceEl.innerHTML = reqPriceHTML(reqClassesOfRow(row), reqPassTypesOfRow(row));
+        return;
+      }
+
+      /* 새 회원 — 체크한 오프라인 수업의 수강권 칸을 보여 줍니다 */
       const regClsBox = event.target.closest('[data-reg-cls] input[type="checkbox"]');
       if (regClsBox) {
         const holder = regClsBox.closest('[data-reg-cls]');
         const classes = Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value);
-        const sel = $('#regPass');
-        if (sel) {
-          const types = availablePassTypes(classes);
-          const cur = sel.value;
-          sel.innerHTML = passOptionList(types.indexOf(Number(cur)) !== -1 ? cur : '', { allowNone: true, types });
-        }
+        body.querySelectorAll('[data-reg-passfield]').forEach((field) => {
+          field.hidden = classes.indexOf(field.dataset.regPassfield) === -1;
+        });
         return;
       }
 
       const reqClassBox = event.target.closest('[data-req-cls] input[type="checkbox"]');
       if (reqClassBox) {
         const row = reqClassBox.closest('.req-row');
-        const holder = reqClassBox.closest('[data-req-cls]');
-        const select = row ? row.querySelector('[data-req-type]') : null;
-        const classes = Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value);
         const priceEl = row ? row.querySelector('[data-req-price]') : null;
-        if (priceEl && select) priceEl.innerHTML = reqPriceHTML(classes, select.value);
+        if (priceEl) priceEl.innerHTML = reqPriceHTML(reqClassesOfRow(row), reqPassTypesOfRow(row));
         return;
       }
 
@@ -1819,17 +1995,17 @@
       const approveBtn = event.target.closest('[data-approve]');
       if (approveBtn) {
         const id = approveBtn.dataset.approve;
-        const select = body.querySelector(`[data-req-type="${id}"]`);
-        const type = select ? select.value : '4';
+        const row = approveBtn.closest('.req-row');
         const holder = body.querySelector(`[data-req-cls="${id}"]`);
         const classes = holder
           ? Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value)
           : undefined;
         try {
-          const v = await api.approveRequest(id, type, classes);
+          const v = await api.approveRequest(id, reqPassTypesOfRow(row), classes);
           await renderAdmin();
           await renderBooking();
-          toast(`${v.name}님 · 수업 ${v.classes.length}개 열림${v.pass ? ` · ${v.pass.label}` : ' · 수강권 없음'}`);
+          const summary = passSummaryText(v);
+          toast(`${v.name}님 · 수업 ${v.classes.length}개 열림${summary ? ` · ${summary}` : ' · 수강권 없음'}`);
         } catch (err) {
           toast(err.message, true);
         }
@@ -1840,17 +2016,24 @@
       if (registerBtn) {
         const name = ($('#regName') || {}).value || '';
         const code = ($('#regCode') || {}).value || '';
-        const passType = ($('#regPass') || {}).value || '';
         const holder = body.querySelector('[data-reg-cls]');
         const classes = holder
           ? Array.from(holder.querySelectorAll('input:checked')).map((x) => x.value)
           : [];
+        /* 체크한 오프라인 수업의 수강권만 보냅니다 */
+        const passTypes = {};
+        body.querySelectorAll('[data-reg-pass]').forEach((sel) => {
+          const classId = sel.dataset.regPass;
+          if (classes.indexOf(classId) === -1) return;
+          if (sel.value) passTypes[classId] = sel.value;
+        });
         registerBtn.disabled = true;
         try {
-          const v = await api.adminRegister({ name, code, classes, passType });
+          const v = await api.adminRegister({ name, code, classes, passTypes });
           await renderAdmin();
           await renderBooking();
-          toast(`${v.name}님을 등록했어요 · 열린 수업 ${v.classes.length}개`);
+          const summary = passSummaryText(v);
+          toast(`${v.name}님을 등록했어요 · 열린 수업 ${v.classes.length}개${summary ? ` · ${summary}` : ''}`);
         } catch (err) {
           registerBtn.disabled = false;
           toast(err.message || '회원을 등록하지 못했어요.', true);
@@ -1860,13 +2043,24 @@
 
       const grantBtn = event.target.closest('[data-grant]');
       if (grantBtn) {
-        const studentId = $('#grantStudent').value;
-        const type = $('#grantType').value;
+        const studentId = ($('#grantStudent') || {}).value;
+        const passTypes = {};
+        body.querySelectorAll('[data-grant-pass]').forEach((sel) => {
+          if (sel.value) passTypes[sel.dataset.grantPass] = sel.value;
+        });
+        if (!studentId) {
+          toast('수강생을 골라 주세요.', true);
+          return;
+        }
+        if (!Object.keys(passTypes).length) {
+          toast('부여할 수업의 수강권을 골라 주세요.', true);
+          return;
+        }
         try {
-          await api.grantPass(studentId, type);
+          const v = await api.grantPass(studentId, passTypes);
           await renderAdmin();
           await renderBooking();
-          toast('수강권을 부여했어요.');
+          toast(`${v.name}님 수강권을 부여했어요 · ${passSummaryText(v)}`);
         } catch (err) {
           toast(err.message, true);
         }
