@@ -168,7 +168,8 @@
   }
 
   function priceTotalText(summary) {
-    if (summary.rows.some((row) => row.pending)) return '수강권 선택 전';
+    const pending = summary.rows.some((row) => row.pending);
+    if (pending) return summary.confirmed ? `${won(summary.confirmed)} + 수강권 선택 전` : '수강권 선택 전';
     if (summary.confirmed && summary.unknown.length) return `${won(summary.confirmed)} + 별도 안내`;
     if (summary.confirmed) return won(summary.confirmed);
     return '별도 안내';
