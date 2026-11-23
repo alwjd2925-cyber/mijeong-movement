@@ -1,19 +1,33 @@
 /* ============================================================
    미정 클래스 — styles
-   종이 질감의 오프화이트 바탕, 블랙 라인 타이포, 버터 옐로우 포인트
+   다크 그레이 바탕, 라이트 라인 타이포, 버터 옐로우 포인트
+
+   바탕 = --paper(#1C1C1E)
+   카드/서피스 = --surface(#232326) → --surface-2(#2C2C30) → --surface-3(#34343A)
+   입력창·체크칸 = --paper (카드보다 한 단계 들어간 색)
+   선택 = --butter 바탕 + --on-butter(#111) 글자
    ============================================================ */
 
 :root {
-  --ink: #181818;
-  --ink-70: rgba(24, 24, 24, 0.68);
-  --ink-45: rgba(24, 24, 24, 0.45);
-  --ink-25: rgba(24, 24, 24, 0.24);
-  --paper: #fafaf8;
-  --paper-2: #f4f1ea;
+  --ink: #f4f4f2;
+  --ink-70: #c9c9ce;
+  --ink-45: #a8a8ad;
+  --ink-25: #74747a;
+  --paper: #1c1c1e;
+  --paper-2: #262629;
+  --surface: #232326;
+  --surface-2: #2c2c30;
+  --surface-3: #34343a;
   --butter: #f3ff00;
   --butter-2: #e4f000;
-  --line: rgba(24, 24, 24, 0.13);
-  --line-strong: rgba(24, 24, 24, 0.22);
+  --on-butter: #111111;
+  --inverse: #f4f4f2;
+  --on-inverse: #111111;
+  --line: rgba(255, 255, 255, 0.12);
+  --line-strong: rgba(255, 255, 255, 0.22);
+  --rule: rgba(244, 244, 242, 0.55);
+  --warn: #f0c24b;
+  --danger: #ff7b70;
   --font: "Instrument Sans", "Pretendard Variable", Pretendard, -apple-system,
     BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --wrap: 1080px;
@@ -28,6 +42,7 @@
 }
 
 html {
+  color-scheme: dark;
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
   scroll-padding-top: 76px;
@@ -52,7 +67,7 @@ body::before {
   inset: 0;
   z-index: 3;
   pointer-events: none;
-  opacity: 0.35;
+  opacity: 0.16;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='180' height='180' filter='url(%23n)' opacity='0.22'/></svg>");
 }
 
@@ -109,7 +124,7 @@ ol {
 
 ::selection {
   background: var(--butter-2);
-  color: var(--ink);
+  color: var(--on-butter);
 }
 
 .sprite {
@@ -131,7 +146,7 @@ ol {
   position: sticky;
   top: 0;
   z-index: 40;
-  background: rgba(250, 250, 248, 0.86);
+  background: rgba(28, 28, 30, 0.84);
   backdrop-filter: saturate(140%) blur(10px);
   -webkit-backdrop-filter: saturate(140%) blur(10px);
   border-bottom: 1px solid var(--line);
@@ -229,13 +244,11 @@ ol {
 }
 
 .mark {
-  background-image: linear-gradient(
-    transparent 58%,
-    var(--butter-2) 58%,
-    var(--butter-2) 94%,
-    transparent 94%
-  );
-  padding: 0 0.06em;
+  background: var(--butter);
+  color: var(--on-butter);
+  padding: 0 0.14em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 .lede {
@@ -296,18 +309,18 @@ ol {
 }
 
 .btn-solid {
-  background: var(--ink);
-  color: #fff;
+  background: var(--inverse);
+  color: var(--on-inverse);
 }
 
 .btn-solid:hover {
-  background: #000;
+  background: #e4e4df;
   transform: translateY(-1px);
 }
 
 .btn-butter {
   background: var(--butter);
-  color: var(--ink);
+  color: var(--on-butter);
   border-color: var(--butter);
 }
 
@@ -347,13 +360,13 @@ ol {
 .btn-wide span {
   font-size: 11.5px;
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.62);
+  color: rgba(17, 17, 17, 0.62);
   margin-left: 4px;
 }
 
 /* 노란 배경 위에서는 보조 문구도 검정 계열로 */
 .btn-butter.btn-wide span {
-  color: rgba(24, 24, 24, 0.6);
+  color: rgba(17, 17, 17, 0.62);
 }
 
 .btn:disabled {
@@ -463,11 +476,11 @@ ol {
 .mode.is-online {
   background: var(--butter);
   border-color: var(--butter);
-  color: var(--ink);
+  color: var(--on-butter);
 }
 
 .class-card.is-online .class-art {
-  background: #fff;
+  background: var(--surface-2);
   border-style: dashed;
 }
 
@@ -583,7 +596,7 @@ ol {
   padding: 7px 11px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface-2);
   font-size: 11.5px;
   color: var(--ink-70);
   transition: all 0.16s;
@@ -596,10 +609,17 @@ ol {
 }
 
 .ot-tab.is-active {
-  border-color: var(--ink);
-  background: var(--paper-2);
-  color: var(--ink);
+  border-color: var(--butter);
+  background: var(--butter);
+  color: var(--on-butter);
   font-weight: 500;
+}
+
+/* 활성 탭 위의 '온라인' 칩은 반대로 뒤집어 경계가 사라지지 않게 */
+.ot-tab.is-active .mode.is-online {
+  background: var(--on-butter);
+  border-color: var(--on-butter);
+  color: var(--butter);
 }
 
 .ot-week .select {
@@ -714,7 +734,7 @@ table.track-table tbody th.td-ex {
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 3px;
-  background: #fff;
+  background: var(--paper);
   font-size: 12px;
   font-weight: 500;             /* 체크 전/후 동일 */
   line-height: 26px;            /* 28px - 테두리 2px, 항상 같음 */
@@ -732,11 +752,11 @@ table.track-table tbody th.td-ex {
 .tick.is-on {
   background: var(--butter);
   border-color: var(--butter);
-  color: var(--ink);
+  color: var(--on-butter);
 }
 
 .tick.is-on:hover {
-  border-color: var(--ink);
+  border-color: var(--butter-2);
 }
 
 .tick:disabled {
@@ -752,7 +772,7 @@ table.track-table tbody th.td-ex {
 
 .track-note {
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--surface-2);
   padding: 12px;
 }
 
@@ -806,7 +826,7 @@ table.track-table tbody th.td-ex {
   padding: 16px 14px;
   border: 1px dashed var(--line-strong);
   text-align: center;
-  background: #fff;
+  background: var(--surface-2);
 }
 
 .track-lock-title {
@@ -882,13 +902,13 @@ table.track-table tbody th.td-ex {
   padding: 12px 13px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface-2);
   transition: border-color 0.16s, background-color 0.16s;
 }
 
 .note-card:hover {
   border-color: var(--ink-25);
-  background: var(--paper);
+  background: var(--surface-3);
 }
 
 .nc-top {
@@ -910,7 +930,7 @@ table.track-table tbody th.td-ex {
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--butter);
-  color: var(--ink);
+  color: var(--on-butter);
   white-space: nowrap;
 }
 
@@ -990,7 +1010,7 @@ table.track-table tbody th.td-ex {
 
 /* ── booking ──────────────────────────────────────────────── */
 .panel {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
 }
 
@@ -1045,9 +1065,9 @@ table.track-table tbody th.td-ex {
 }
 
 .demo-switch button.is-active {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: #fff;
+  background: var(--butter);
+  border-color: var(--butter);
+  color: var(--on-butter);
 }
 
 .demo-switch .demo-btn {
@@ -1072,7 +1092,7 @@ table.track-table tbody th.td-ex {
 }
 
 .demo-switch button.is-active .demo-hint {
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(17, 17, 17, 0.62);
 }
 
 .login-form {
@@ -1097,8 +1117,8 @@ table.track-table tbody th.td-ex {
 
 .login-form input:focus {
   outline: none;
-  border-color: var(--ink);
-  background: #fff;
+  border-color: var(--ink-45);
+  background: var(--surface-2);
 }
 
 .login-form .btn {
@@ -1161,7 +1181,7 @@ table.track-table tbody th.td-ex {
 .class-chip.is-online {
   background: var(--butter);
   border-color: var(--butter);
-  color: var(--ink);
+  color: var(--on-butter);
 }
 
 .class-chip.is-none {
@@ -1233,7 +1253,7 @@ table.track-table tbody th.td-ex {
 
 .dot.is-left {
   background: var(--butter);
-  border-color: rgba(24, 24, 24, 0.55);
+  border-color: rgba(0, 0, 0, 0.55);
 }
 
 .pass-meta {
@@ -1245,7 +1265,7 @@ table.track-table tbody th.td-ex {
 }
 
 .pass-warn {
-  color: #8a6a00;
+  color: var(--warn);
 }
 
 /* 수강권 여러 장 (수업별로 따로) */
@@ -1270,20 +1290,20 @@ table.track-table tbody th.td-ex {
 .pass-note {
   margin: -8px 0 18px;
   font-size: 11px;
-  color: #8a6a00;
+  color: var(--warn);
 }
 
 /* 상태 배너 */
 .state-banner {
-  background: #fff;
+  background: var(--surface-2);
   border: 1px dashed var(--line-strong);
   padding: 18px 16px;
   margin-bottom: 14px;
 }
 
 .state-banner.is-pending {
-  background: rgba(243, 255, 0, 0.22);
-  border: 1px solid rgba(24, 24, 24, 0.16);
+  background: rgba(243, 255, 0, 0.1);
+  border: 1px solid rgba(243, 255, 0, 0.32);
 }
 
 .state-banner.is-open {
@@ -1350,12 +1370,12 @@ table.track-table tbody th.td-ex {
   margin-top: 8px;
   font-size: 11px;
   line-height: 1.6;
-  color: #8a6a00;
+  color: var(--warn);
 }
 
 /* ── 등록 신청 폼 ── */
 .reg-form {
-  background: #fff;
+  background: var(--surface-2);
   border: 1px solid var(--line-strong);
   padding: 18px 16px 16px;
   margin-bottom: 18px;
@@ -1429,12 +1449,13 @@ table.track-table tbody th.td-ex {
 
 .cls-picks--student .cls-pick:has(input:checked) {
   background: var(--butter);
-  color: var(--ink);
+  border-color: var(--butter);
+  color: var(--on-butter);
 }
 
 .cls-picks--student .cls-pick:has(input:checked) .pck-mode {
-  border-color: var(--line-strong);
-  color: var(--ink);
+  border-color: rgba(17, 17, 17, 0.32);
+  color: var(--on-butter);
 }
 
 .reg-pass {
@@ -1515,7 +1536,7 @@ table.track-table tbody th.td-ex {
   padding: 8px 10px;
   border: 1px solid var(--line-strong);
   border-radius: 4px;
-  background: #fff;
+  background: var(--paper);
   font-size: 11.5px;
   color: var(--ink-70);
   cursor: pointer;
@@ -1566,15 +1587,20 @@ table.track-table tbody th.td-ex {
 
 .pass-pick:has(input:checked) {
   background: var(--butter);
-  color: var(--ink);
+  border-color: var(--butter);
+  color: var(--on-butter);
 }
 
 .pass-pick:has(input:checked) .pass-name {
-  color: var(--ink);
+  color: var(--on-butter);
+}
+
+.pass-pick:has(input:checked) .pass-amt {
+  color: var(--on-butter);
 }
 
 .pass-pick:has(input:checked) .pass-meta {
-  color: rgba(24, 24, 24, 0.6);
+  color: rgba(17, 17, 17, 0.62);
 }
 
 /* 이번 선택에서 빠지는 수강권 안내 */
@@ -1602,7 +1628,7 @@ table.track-table tbody th.td-ex {
 .reg-warn {
   margin-top: 6px;
   font-size: 11px;
-  color: #8a6a00;
+  color: var(--warn);
 }
 
 .reg-warn[hidden] {
@@ -1777,7 +1803,7 @@ table.track-table tbody th.td-ex {
   justify-content: space-between;
   gap: 10px;
   padding: 6px 0 12px;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
 }
 
 .sched-head h4 {
@@ -1880,6 +1906,7 @@ table.track-table tbody th.td-ex {
 .btn-mini--butter {
   background: var(--butter);
   border-color: var(--butter);
+  color: var(--on-butter);
   font-weight: 500;
 }
 
@@ -1906,8 +1933,8 @@ table.track-table tbody th.td-ex {
   letter-spacing: 0.06em;
   padding: 5px 9px;
   border-radius: 999px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--inverse);
+  color: var(--on-inverse);
   white-space: nowrap;
 }
 
@@ -1991,8 +2018,9 @@ table.track-table tbody th.td-ex {
 }
 
 .seq-tab.is-active {
-  background: var(--ink);
-  color: #fff;
+  background: var(--butter);
+  color: var(--on-butter);
+  font-weight: 500;
 }
 
 .seq-count {
@@ -2159,12 +2187,12 @@ dialog.modal {
 }
 
 dialog.modal::backdrop {
-  background: rgba(24, 24, 24, 0.42);
+  background: rgba(0, 0, 0, 0.62);
   backdrop-filter: blur(2px);
 }
 
 .modal-inner {
-  background: var(--paper);
+  background: var(--surface);
   border: 1px solid var(--line-strong);
 }
 
@@ -2212,7 +2240,7 @@ dialog.modal::backdrop {
 
 .video-frame {
   aspect-ratio: 16 / 9;
-  background: #111;
+  background: #000;
   position: relative;
 }
 
@@ -2385,7 +2413,7 @@ dialog.modal--admin {
   height: 32px;
   border: 1px solid var(--line-strong);
   border-radius: 3px;
-  background: #fff;
+  background: var(--paper);
   padding: 0 8px;
   font-size: 11.5px;
 }
@@ -2452,8 +2480,8 @@ dialog.modal--admin {
 
 .reg-input:focus {
   outline: none;
-  border-color: var(--ink);
-  background: #fff;
+  border-color: var(--ink-45);
+  background: var(--surface-2);
 }
 
 .reg-row .select {
@@ -2519,7 +2547,8 @@ dialog.modal--admin {
 
 .cls-pick:has(input:checked) {
   background: var(--butter);
-  color: var(--ink);
+  border-color: var(--butter);
+  color: var(--on-butter);
 }
 
 table.stu-table--cls td {
@@ -2605,8 +2634,8 @@ table.stu-table td {
 
 .pill.is-active {
   background: var(--butter);
-  border-color: rgba(24, 24, 24, 0.2);
-  color: var(--ink);
+  border-color: var(--butter);
+  color: var(--on-butter);
 }
 
 details.day {
@@ -2708,8 +2737,8 @@ details.day[open] summary::after {
 }
 
 .bk-tag.is-late {
-  border-color: rgba(122, 31, 31, 0.35);
-  color: #7a1f1f;
+  border-color: rgba(255, 123, 112, 0.4);
+  color: var(--danger);
 }
 
 .bk-item .btn-mini {
@@ -2721,8 +2750,8 @@ details.day[open] summary::after {
 }
 
 .btn-mini--x:hover {
-  border-color: #7a1f1f;
-  color: #7a1f1f;
+  border-color: var(--danger);
+  color: var(--danger);
   background: none;
 }
 
@@ -2766,8 +2795,8 @@ details.day[open] summary::after {
   bottom: 24px;
   transform: translate(-50%, 14px);
   z-index: 60;
-  background: var(--ink);
-  color: #fff;
+  background: var(--inverse);
+  color: var(--on-inverse);
   font-size: 12.5px;
   letter-spacing: -0.01em;
   padding: 11px 18px;
@@ -2777,6 +2806,7 @@ details.day[open] summary::after {
   transition: opacity 0.22s, transform 0.22s;
   max-width: calc(100% - 32px);
   text-align: center;
+  font-weight: 500;
 }
 
 .toast.is-on {
@@ -2785,12 +2815,13 @@ details.day[open] summary::after {
 }
 
 .toast.is-error {
-  background: #7a1f1f;
+  background: #c8392e;
+  color: #fff;
 }
 
 /* ── 선택 컨트롤 (체크박스) ─────────────────────────────────── */
 /* 수업 · 수강권 · 강사 모드 어디든 같은 모양:
-   기본 = 연회색 네모, 선택 = #F3FF00 바탕에 검정 체크.
+   기본 = 어두운 네모, 선택 = #F3FF00 바탕에 검정 체크.
    상자 크기·테두리 두께가 선택 전후로 같아서 레이아웃이 흔들리지 않습니다. */
 input.chk {
   -webkit-appearance: none;
@@ -2802,7 +2833,7 @@ input.chk {
   padding: 0;
   border: 1.5px solid var(--ink-25);
   border-radius: 3px;
-  background-color: #fff;
+  background-color: var(--paper);
   background-image: none;
   background-position: center;
   background-repeat: no-repeat;
@@ -2814,7 +2845,7 @@ input.chk {
 input.chk:checked {
   border-color: var(--butter-2);
   background-color: var(--butter);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 10'><path d='M2.4 5.3 4.9 7.9 9.8 2.1' fill='none' stroke='%23181818' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 10'><path d='M2.4 5.3 4.9 7.9 9.8 2.1' fill='none' stroke='%23111111' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
 
 input.chk:disabled {
