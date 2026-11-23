@@ -354,13 +354,13 @@
     return `<span class="notice-chip">${esc(classMeta(notice.target).short)}</span>`;
   }
 
-  /* 로그인한 회원 화면 위쪽의 공지 벤토 카드 */
+  /* 로그인한 회원 화면의 공지 벤토 카드 */
   function noticesHTML(v) {
     const list = (v && v.notices) || [];
     if (!v || !list.length) return '';
     const firstPinned = list.findIndex((n) => n.pinned);
     return `
-      <section class="notice-bento" aria-label="공지사항">
+      <div class="notice-bento" aria-label="공지사항">
         <div class="notice-bento-head">
           <h3>공지사항</h3>
           <span>${list.length}건</span>
@@ -382,7 +382,23 @@
               </details>
             </li>`).join('')}
         </ul>
-      </section>`;
+      </div>`;
+  }
+
+  /* 공지 섹션 — 로그인했고 볼 공지가 있을 때만 보입니다 */
+  function renderNotice(v) {
+    const section = $('#notice');
+    const body = $('#noticeBody');
+    if (!section || !body) return;
+    const html = noticesHTML(v);
+    body.innerHTML = html;
+    const show = !!html;
+    section.hidden = !show;
+    const link = document.querySelector('.head-nav a[href="#notice"]');
+    if (link) {
+      link.hidden = !show;
+      if (!show) link.classList.remove('is-current');
+    }
   }
 
   /* ── class ─────────────────────────────────────────────── */
@@ -880,10 +896,10 @@
 
     area.innerHTML = `
       ${identityHTML(student)}
-      ${noticesHTML(student)}
       ${statusBlockHTML(student)}
       ${offline.length ? scheduleHTML(student, visibleSessions) : ''}`;
 
+    renderNotice(student);
     await renderOnline();
   }
 

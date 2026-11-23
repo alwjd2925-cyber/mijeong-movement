@@ -235,6 +235,13 @@ ol {
   gap: 2px;
   margin-left: auto;
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.head-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .head-nav a {
@@ -3493,6 +3500,18 @@ input.chk:focus-visible {
   display: flex;
   flex: none;
   gap: 6px;
+}
+
+/* 독립 섹션(#notice) — 예약 카드 안이 아니라 독립 섹션으로 */
+#notice .notice-bento {
+  margin-bottom: 0;
+  padding: 18px 20px 14px;
+}
+
+@media (max-width: 480px) {
+  #notice .notice-bento {
+    padding: 15px 16px 12px;
+  }
 }
 
 /* ── 반응형 ───────────────────────────────────────────────── */
