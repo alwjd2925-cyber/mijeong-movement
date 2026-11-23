@@ -1710,7 +1710,12 @@ table.track-table tbody th.td-ex {
 }
 
 .reg-pass.is-muted {
-  opacity: 0.62;
+  opacity: 1;
+}
+
+/* 수강권 블록이 비어 있을 때는 안내 문구 색으로만 구분 */
+.reg-pass.is-muted .pass-empty {
+  color: var(--ink-45);
 }
 
 .reg-pass-label {
