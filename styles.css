@@ -1,39 +1,42 @@
 /* ============================================================
    미정 클래스 — styles
-   화이트 · 블랙 · #F3FF00 벤토 스타일
+   전체 밝은 화이트 · #F3FF00 포인트 벤토 스타일
 
-   바탕      = --paper(#F6F7F5)
-   카드      = --surface(#FFFFFF) — 큰 라운드(20~28px) 면 대비
-   다크 카드 = --dark(#141518) + 흰 글자 + #F3FF00 포인트
+   바탕      = --paper(#F7F8F5)
+   카드      = --surface(#FFFFFF) + 연한 테두리 + 얕은 그림자
+   보조 면   = --surface-2(#F0F2EC) / --surface-3(#E8EBE4)
    옐로 카드 = --butter(#F3FF00) + --on-butter(#141518) 글자
    보조 포인트 = --blue(#136CFC) — 포커스 링 정도로만 절제
 
+   예전 '다크 카드' 자리(--dark / --on-dark / --dark-line)는 이름만 남기고
+   모두 밝은 카드 값으로 바뀌었습니다. 새로 쓰는 코드는 아래 밝은 변수를 쓰세요.
+
    체크 표시는 상자 채움 없이(테두리만) 체크에만 색을 넣습니다.
-   다크 카드 위 = #F3FF00 체크, 라이트/옐로 카드 위 = #141518 체크.
+   어디서나 #141518 체크 — 흰 바탕에서 4.5:1 이상으로 선명합니다.
    ============================================================ */
 
 :root {
   /* 라이트 베이스 */
-  --paper: #f6f7f5;
+  --paper: #f7f8f5;
   --paper-2: #eef0ea;
   --surface: #ffffff;
-  --surface-2: #f3f4ef;
-  --surface-3: #e9ece5;
+  --surface-2: #f0f2ec;
+  --surface-3: #e8ebe4;
 
   --ink: #141518;
   --ink-70: #45484f;
   --ink-45: #55585f;
   --ink-25: #8c919c;
 
-  /* 솔리드 다크 */
-  --dark: #141518;
-  --dark-2: #1d1f23;
-  --dark-3: #26282d;
-  --on-dark: #ffffff;
-  --on-dark-70: rgba(255, 255, 255, 0.84);
-  --on-dark-45: rgba(255, 255, 255, 0.66);
-  --dark-line: rgba(255, 255, 255, 0.13);
-  --dark-line-strong: rgba(255, 255, 255, 0.22);
+  /* 예전 '다크 카드' 변수 — 지금은 밝은 카드/보조 면 값 (이름만 유지) */
+  --dark: #ffffff;
+  --dark-2: #f0f2ec;
+  --dark-3: #e8ebe4;
+  --on-dark: #141518;
+  --on-dark-70: #45484f;
+  --on-dark-45: #55585f;
+  --dark-line: rgba(20, 21, 24, 0.1);
+  --dark-line-strong: rgba(20, 21, 24, 0.16);
 
   /* 포인트 */
   --butter: #f3ff00;
@@ -53,6 +56,7 @@
 
   --line: #e6e8e2;
   --line-strong: #d5d8d0;
+  --card-line: rgba(20, 21, 24, 0.1);
   --rule: #c9cdc4;
   --warn: #8a5300;
   --danger: #c8322a;
@@ -261,8 +265,9 @@ ol {
 }
 
 .head-nav a.is-current {
-  background: var(--ink);
-  color: var(--on-dark);
+  background: var(--butter);
+  color: var(--on-butter);
+  font-weight: 600;
 }
 
 .head-admin {
@@ -293,8 +298,8 @@ ol {
   display: inline-block;
   padding: 7px 13px;
   border-radius: 999px;
-  background: var(--ink);
-  color: var(--butter);
+  background: var(--butter);
+  color: var(--on-butter);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.28em;
@@ -423,16 +428,16 @@ ol {
   transform: translateY(-1px);
 }
 
-/* 히어로 보조 CTA · 로그인 확인 — 솔리드 블랙 */
+/* 히어로 보조 CTA · 로그인 확인 — 흰 바탕 + 진한 테두리 */
 .btn-blue {
-  background: var(--ink);
+  background: var(--surface);
   border-color: var(--ink);
-  color: var(--on-dark);
+  color: var(--ink);
 }
 
 .btn-blue:hover {
-  background: #303237;
-  border-color: #303237;
+  background: var(--butter);
+  border-color: var(--butter);
   transform: translateY(-1px);
 }
 
@@ -454,8 +459,8 @@ ol {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--ink);
-  color: var(--butter);
+  background: #ffffff;
+  color: var(--ink);
   font-size: 13px;
   line-height: 1;
   transform: none;
@@ -512,8 +517,8 @@ ol {
   display: inline-block;
   padding: 5px 11px;
   border-radius: 999px;
-  background: var(--ink);
-  color: var(--butter);
+  background: var(--butter);
+  color: var(--on-butter);
   font-size: 9.5px;
   font-weight: 600;
   letter-spacing: 0.2em;
@@ -549,6 +554,7 @@ ol {
   display: flex;
   flex-direction: column;
   background: var(--surface);
+  border: 1px solid var(--card-line);
   border-radius: var(--radius-lg);
   padding: 12px 12px 20px;
   box-shadow: var(--shadow);
@@ -565,10 +571,10 @@ ol {
   overflow: hidden;
 }
 
-/* 화이트 · 블랙 · #F3FF00 3단 블록 대비 */
+/* 밝은 3단 면 대비 — 흰 카드 위 옅은 회색 / 옐로 / 옅은 그린 */
 .class-card:nth-child(1) .class-art {
-  background: var(--dark);
-  color: #ffffff;
+  background: var(--surface-2);
+  color: var(--ink);
 }
 
 .class-card:nth-child(2) .class-art {
@@ -582,8 +588,8 @@ ol {
 }
 
 .class-card:nth-child(4) .class-art {
-  background: var(--dark);
-  color: var(--butter);
+  background: var(--surface-3);
+  color: var(--ink);
 }
 
 .class-art .il {
@@ -640,19 +646,19 @@ ol {
   margin-top: 2px;
 }
 
-/* 오프라인 / 온라인 구분 칩 — 오프라인 블랙, 온라인 옐로우 */
+/* 오프라인 / 온라인 구분 칩 — 오프라인 회색, 온라인 옐로우 */
 .mode {
   display: inline-flex;
   align-items: center;
   height: 21px;
   padding: 0 8px;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: var(--ink);
+  background: var(--surface-2);
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.03em;
-  color: var(--on-dark);
+  color: var(--ink);
   white-space: nowrap;
 }
 
@@ -757,29 +763,31 @@ ol {
 /* ── online tracker ───────────────────────────────────────── */
 .panel {
   background: var(--surface);
+  border: 1px solid var(--card-line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
 }
 
-/* 다크 벤토 카드 — 안쪽 글자·선도 흰 계열로 */
+/* 예전 다크 벤토 카드 자리 — 지금은 흰 카드 + 연한 테두리 */
 .track-panel {
-  --ink: #ffffff;
+  --ink: #141518;
   --ink-70: var(--on-dark-70);
   --ink-45: var(--on-dark-45);
-  --ink-25: rgba(255, 255, 255, 0.32);
-  --paper: #1b1d21;
-  --paper-2: #1b1d21;
-  --surface: #141518;
-  --surface-2: #1e2024;
-  --surface-3: #26282d;
+  --ink-25: #8c919c;
+  --paper: #f7f8f5;
+  --paper-2: #f0f2ec;
+  --surface: #ffffff;
+  --surface-2: #f0f2ec;
+  --surface-3: #e8ebe4;
   --line: var(--dark-line);
   --line-strong: var(--dark-line-strong);
-  --rule: rgba(255, 255, 255, 0.4);
-  --warn: #ffd24a;
+  --rule: #c9cdc4;
+  --warn: #8a5300;
   color: var(--ink);
   background: var(--dark);
+  border: 1px solid var(--card-line);
   padding: 18px 15px 20px;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 .track-head {
@@ -813,8 +821,8 @@ ol {
 }
 
 .ot-tab:hover {
-  border-color: rgba(255, 255, 255, 0.45);
-  color: var(--on-dark);
+  border-color: rgba(20, 21, 24, 0.45);
+  color: var(--ink);
 }
 
 .ot-tab.is-active {
@@ -824,11 +832,11 @@ ol {
   font-weight: 650;
 }
 
-/* 활성 탭 위의 '온라인' 칩은 반대로 뒤집어 경계가 사라지지 않게 */
+/* 활성 탭 위의 '온라인' 칩은 테두리만 남겨 옐로 바탕에서 경계가 사라지지 않게 */
 .ot-tab.is-active .mode.is-online {
-  background: var(--on-butter);
-  border-color: var(--on-butter);
-  color: var(--butter);
+  background: transparent;
+  border-color: rgba(20, 21, 24, 0.42);
+  color: var(--on-butter);
 }
 
 .ot-week .select {
@@ -851,8 +859,11 @@ ol {
 }
 
 .track-sum b {
-  color: var(--butter);
+  color: var(--ink);
   font-weight: 700;
+  background: var(--butter);
+  padding: 0 3px;
+  border-radius: 3px;
 }
 
 .track-who {
@@ -928,23 +939,23 @@ table.track-table tbody th.td-ex {
   font-size: 9.5px;
   font-weight: 500;
   letter-spacing: 0.02em;
-  color: var(--on-dark-45);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.34);
+  color: var(--ink-45);
+  border-bottom: 1px solid var(--line-strong);
 }
 
 .ex-video:hover {
-  color: var(--butter);
-  border-color: var(--butter);
+  color: var(--ink);
+  border-color: var(--ink);
 }
 
-/* 체크표 — 네모는 채우지 않고(테두리만), 체크에만 #F3FF00 색 */
+/* 체크표 — 네모는 채우지 않고(테두리만), 체크에만 #141518 색 */
 .tick {
   display: block;               /* 기준선(baseline) 정렬에서 빼 위치를 고정 */
   width: 100%;
   height: 30px;
   min-height: 30px;
   padding: 0;
-  border: 1.5px solid rgba(255, 255, 255, 0.34);
+  border: 1.5px solid rgba(20, 21, 24, 0.3);
   border-radius: 5px;
   background-color: transparent;
   background-image: none;
@@ -962,18 +973,18 @@ table.track-table tbody th.td-ex {
 }
 
 .tick:hover {
-  border-color: rgba(255, 255, 255, 0.55);
+  border-color: rgba(20, 21, 24, 0.55);
 }
 
 .tick.is-on {
-  border-color: rgba(243, 255, 0, 0.55);
+  border-color: rgba(20, 21, 24, 0.55);
   background-color: transparent;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'><path d='M2.2 6.2 5.4 9.4 11.8 2.3' fill='none' stroke='%23F3FF00' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'><path d='M2.2 6.2 5.4 9.4 11.8 2.3' fill='none' stroke='%23141518' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   color: transparent;
 }
 
 .tick.is-on:hover {
-  border-color: rgba(243, 255, 0, 0.85);
+  border-color: var(--ink);
 }
 
 .tick:disabled {
@@ -995,11 +1006,15 @@ table.track-table tbody th.td-ex {
 }
 
 .tn-label {
+  display: inline-block;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--butter);
+  color: var(--ink);
+  background: var(--butter);
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
 .tn-hint {
@@ -1014,21 +1029,22 @@ table.track-table tbody th.td-ex {
   padding: 11px 12px;
   border: 1px solid var(--dark-line-strong);
   border-radius: 8px;
-  background: #141518;
+  background: #f7f8f5;
   font: inherit;
   font-size: 16px;
   line-height: 1.65;
-  color: var(--on-dark);
+  color: var(--ink);
   resize: vertical;
 }
 
 #onlineNote::placeholder {
-  color: rgba(255, 255, 255, 0.56);
+  color: var(--ink-45);
 }
 
 #onlineNote:focus {
   outline: none;
-  border-color: var(--butter);
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(243, 255, 0, 0.65);
 }
 
 .tn-foot {
@@ -1133,7 +1149,7 @@ table.track-table tbody th.td-ex {
 }
 
 .note-card:hover {
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(20, 21, 24, 0.3);
   background: var(--dark-3);
 }
 
@@ -1193,8 +1209,9 @@ table.track-table tbody th.td-ex {
 }
 
 .note-empty b {
-  color: var(--butter);
+  color: var(--ink);
   font-weight: 600;
+  box-shadow: inset 0 -0.5em 0 var(--butter);
 }
 
 /* 강사 모드: 온라인 체크 요약 */
@@ -1292,9 +1309,9 @@ table.track-table tbody th.td-ex {
 }
 
 .demo-switch button.is-active {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--on-dark);
+  background: var(--butter);
+  border-color: var(--butter);
+  color: var(--on-butter);
 }
 
 .demo-switch .demo-btn {
@@ -1319,7 +1336,7 @@ table.track-table tbody th.td-ex {
 }
 
 .demo-switch button.is-active .demo-hint {
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--on-butter-soft);
 }
 
 .login-form {
@@ -1433,20 +1450,22 @@ table.track-table tbody th.td-ex {
   border-color: var(--ink);
 }
 
-/* 수강권 카드 — 솔리드 다크 카드 */
+/* 수강권 카드 — 흰 카드 + 연한 테두리 */
 .pass {
-  --ink: #ffffff;
+  --ink: #141518;
   --ink-70: var(--on-dark-70);
   --ink-45: var(--on-dark-45);
-  --ink-25: rgba(255, 255, 255, 0.3);
+  --ink-25: #8c919c;
   --line: var(--dark-line);
   --line-strong: var(--dark-line-strong);
-  --warn: #ffd24a;
+  --warn: #8a5300;
   background: var(--dark);
   color: var(--ink);
+  border: 1px solid var(--card-line);
   border-radius: var(--radius-lg);
   padding: 17px 17px 15px;
   margin-bottom: 18px;
+  box-shadow: var(--shadow);
 }
 
 .pass-top {
@@ -1470,7 +1489,10 @@ table.track-table tbody th.td-ex {
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--butter);
+  color: var(--on-butter);
+  background: var(--butter);
+  padding: 1px 7px;
+  border-radius: 999px;
 }
 
 .pass-remain {
@@ -1504,13 +1526,13 @@ table.track-table tbody th.td-ex {
   width: 11px;
   height: 11px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.32);
+  border: 1.5px solid rgba(20, 21, 24, 0.22);
   background: transparent;
 }
 
 .dot.is-left {
   background: var(--butter);
-  border-color: var(--butter);
+  border-color: var(--ink);
 }
 
 .pass-meta {
@@ -1641,9 +1663,9 @@ table.track-table tbody th.td-ex {
 }
 
 .state-banner.is-pending .class-chip.is-online {
-  background: var(--on-butter);
-  border-color: var(--on-butter);
-  color: var(--butter);
+  background: transparent;
+  border-color: rgba(20, 21, 24, 0.42);
+  color: var(--on-butter);
 }
 
 /* ── 등록 신청 폼 ── */
@@ -1929,19 +1951,20 @@ table.track-table tbody th.td-ex {
   word-break: keep-all;
 }
 
-/* 예상 결제 금액 — 다크 벤토 블록 */
+/* 예상 결제 금액 — 밝은 보조 면 블록 */
 .reg-price {
-  --ink: #ffffff;
+  --ink: #141518;
   --ink-70: var(--on-dark-70);
   --ink-45: var(--on-dark-45);
   --line: var(--dark-line);
   --line-strong: var(--dark-line-strong);
   margin-top: 12px;
   padding: 14px 15px 15px;
-  border: 0;
+  border: 1px solid var(--card-line);
   border-radius: var(--radius-md);
   background: var(--dark);
   color: var(--ink);
+  box-shadow: var(--shadow);
 }
 
 .rp-empty {
@@ -2018,7 +2041,7 @@ table.track-table tbody th.td-ex {
   gap: 10px;
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px dashed rgba(255, 255, 255, 0.28);
+  border-top: 1px dashed var(--line-strong);
   font-size: 10.5px;
   font-weight: 600;
   color: var(--on-dark-70);
@@ -2028,7 +2051,8 @@ table.track-table tbody th.td-ex {
   font-size: 21px;
   font-weight: 750;
   letter-spacing: -0.03em;
-  color: var(--butter);
+  color: var(--ink);
+  box-shadow: inset 0 -0.42em 0 var(--butter);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2234,8 +2258,8 @@ table.track-table tbody th.td-ex {
   letter-spacing: 0.04em;
   padding: 5px 11px;
   border-radius: 999px;
-  background: var(--ink);
-  color: var(--on-dark);
+  background: var(--butter);
+  color: var(--on-butter);
   white-space: nowrap;
 }
 
@@ -2244,7 +2268,7 @@ table.track-table tbody th.td-ex {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--butter);
+  background: var(--ink);
 }
 
 .cap {
@@ -2259,19 +2283,21 @@ table.track-table tbody th.td-ex {
 
 /* ── sequence ─────────────────────────────────────────────── */
 .warm-block {
-  --ink: #ffffff;
+  --ink: #141518;
   --ink-70: var(--on-dark-70);
   --ink-45: var(--on-dark-45);
-  --ink-25: rgba(255, 255, 255, 0.32);
-  --surface-2: rgba(255, 255, 255, 0.1);
-  --surface-3: rgba(255, 255, 255, 0.16);
+  --ink-25: #8c919c;
+  --surface-2: #f0f2ec;
+  --surface-3: #e8ebe4;
   --line: var(--dark-line);
   --line-strong: var(--dark-line-strong);
   background: var(--dark);
   color: var(--ink);
+  border: 1px solid var(--card-line);
   border-radius: var(--radius-lg);
   padding: 20px 17px 8px;
   margin-bottom: 18px;
+  box-shadow: var(--shadow);
 }
 
 .warm-head {
@@ -2288,7 +2314,8 @@ table.track-table tbody th.td-ex {
   letter-spacing: 0.28em;
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--butter);
+  color: var(--ink);
+  box-shadow: inset 0 -0.45em 0 var(--butter);
 }
 
 .warm-note {
@@ -2332,8 +2359,8 @@ table.track-table tbody th.td-ex {
 }
 
 .seq-tab.is-active {
-  background: var(--ink);
-  color: var(--on-dark);
+  background: var(--butter);
+  color: var(--on-butter);
   font-weight: 650;
 }
 
@@ -2441,9 +2468,11 @@ table.track-table tbody th.td-ex {
   transition: opacity 0.18s, gap 0.18s;
 }
 
-/* 다크 카드 안에서는 포인트 색 */
+/* 예전 다크 카드 안 포인트 링크 — 지금은 잉크 + 노란 밑줄 */
 .warm-block .btn-video {
-  color: var(--butter);
+  color: var(--ink);
+  border-bottom-color: var(--butter);
+  border-bottom-width: 2px;
 }
 
 .btn-video:hover {
@@ -2458,13 +2487,14 @@ table.track-table tbody th.td-ex {
 
 /* ── footer ───────────────────────────────────────────────── */
 .site-foot {
-  --ink: #ffffff;
+  --ink: #141518;
   --ink-70: var(--on-dark-70);
   --ink-45: var(--on-dark-45);
   --line: var(--dark-line);
   --line-strong: var(--dark-line-strong);
-  background: var(--dark);
+  background: var(--surface-2);
   color: var(--ink);
+  border-top: 1px solid var(--card-line);
   border-radius: 16px 16px 0 0;
   padding: 42px 0 34px;
   margin-top: 22px;
@@ -2498,15 +2528,15 @@ table.track-table tbody th.td-ex {
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: var(--butter);
-  border-bottom: 1px solid rgba(243, 255, 0, 0.5);
+  color: var(--ink);
+  border-bottom: 2px solid var(--butter);
   padding-bottom: 1px;
 }
 
 .foot-links a:hover,
 .foot-admin:hover {
-  color: var(--butter);
-  border-color: var(--butter);
+  color: var(--ink);
+  border-color: var(--ink);
 }
 
 .foot-note {
@@ -2578,13 +2608,13 @@ dialog.modal::backdrop {
 
 .modal-close:hover {
   border-color: var(--ink);
-  background: var(--ink);
-  color: var(--on-dark);
+  background: var(--butter);
+  color: var(--on-butter);
 }
 
 .video-frame {
   aspect-ratio: 16 / 9;
-  background: var(--dark);
+  background: var(--surface-3);
   position: relative;
 }
 
@@ -2603,12 +2633,12 @@ dialog.modal::backdrop {
   gap: 10px;
   text-align: center;
   padding: 20px;
-  background: var(--dark);
+  background: var(--surface-3);
 }
 
 .video-empty p {
   font-size: 12.5px;
-  color: var(--on-dark-70);
+  color: var(--ink-70);
   word-break: keep-all;
   max-width: 24em;
   line-height: 1.7;
@@ -2617,7 +2647,8 @@ dialog.modal::backdrop {
 .video-empty strong {
   font-size: 13.5px;
   font-weight: 700;
-  color: var(--butter);
+  color: var(--ink);
+  box-shadow: inset 0 -0.45em 0 var(--butter);
 }
 
 .modal-foot {
@@ -3157,8 +3188,8 @@ details.day[open] summary::after {
   bottom: 24px;
   transform: translate(-50%, 14px);
   z-index: 60;
-  background: var(--ink);
-  color: var(--on-dark);
+  background: var(--butter);
+  color: var(--on-butter);
   font-size: 12.5px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -3169,7 +3200,7 @@ details.day[open] summary::after {
   transition: opacity 0.22s, transform 0.22s;
   max-width: calc(100% - 32px);
   text-align: center;
-  box-shadow: 0 12px 30px -12px rgba(12, 13, 15, 0.5);
+  box-shadow: 0 12px 30px -12px rgba(12, 13, 15, 0.35);
 }
 
 .toast.is-on {
@@ -3224,17 +3255,19 @@ input.chk:focus-visible {
 }
 
 /* ── 공지사항 (회원 화면 벤토 카드) ─────────────────────── */
-/* 다크 카드 위 흰 글자 — 본문 78%·날짜 58% 흰색으로 4.5:1 이상 유지 */
+/* 흰 카드 + 연한 테두리 — 본문 78%·날짜 45% 잉크로 4.5:1 이상 유지 */
 .notice-bento {
-  --ink: #ffffff;
+  --ink: #141518;
   --ink-70: var(--on-dark-70);
   --ink-45: var(--on-dark-45);
   --line: var(--dark-line);
   background: var(--dark);
   color: var(--ink);
+  border: 1px solid var(--card-line);
   border-radius: var(--radius-lg);
   padding: 15px 16px 12px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow);
 }
 
 .notice-bento-head {
@@ -3281,7 +3314,7 @@ input.chk:focus-visible {
 }
 
 .notice-item details > summary:focus-visible {
-  outline: 2px solid var(--butter);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -3308,8 +3341,8 @@ input.chk:focus-visible {
 .notice-bento .notice-chip {
   font-size: 9.5px;
   font-weight: 600;
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.34);
+  color: var(--ink-70);
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
   padding: 2px 8px;
   line-height: 1.35;
@@ -3317,8 +3350,8 @@ input.chk:focus-visible {
 }
 
 .notice-bento .notice-chip.is-all {
-  border-color: var(--butter);
-  color: var(--butter);
+  border-color: var(--ink);
+  color: var(--ink);
 }
 
 .notice-bento .notice-date {
@@ -3332,7 +3365,7 @@ input.chk:focus-visible {
   font-size: 12.5px;
   font-weight: 600;
   line-height: 1.5;
-  color: #ffffff;
+  color: var(--ink);
   word-break: keep-all;
 }
 
@@ -3344,7 +3377,7 @@ input.chk:focus-visible {
   font-size: 15px;
   line-height: 1;
   font-weight: 600;
-  color: var(--butter);
+  color: var(--ink);
 }
 
 .notice-bento .notice-toggle::before {
@@ -3359,7 +3392,7 @@ input.chk:focus-visible {
   margin: 0 0 11px;
   padding: 11px 12px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--surface-2);
   color: var(--on-dark-70);
   font-size: 11.5px;
   line-height: 1.72;
