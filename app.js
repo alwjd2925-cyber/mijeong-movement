@@ -60,6 +60,8 @@
     regLivePasses: {},  // 그 수강생이 이미 가진 수강권 (수업별)
     regWarn: false,     // 0개 선택 안내 표시
     adminGrantStudent: '', // 수강권 부여에서 고른 수강생
+    noticeEditing: null, // 강사 모드에서 수정 중인 공지 id
+    noticeDeleteArmed: null, // 삭제를 한 번 눌러 확인을 기다리는 공지 id
   };
 
   /* ── 수업별 접근 제어 ──────────────────────────────────── */
@@ -338,6 +340,49 @@
     node.classList.add('is-on');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => node.classList.remove('is-on'), 2800);
+  }
+
+  /* ── 공지사항 ──────────────────────────────────────────── */
+  function noticeDateText(value) {
+    const parts = String(value || '').split('-');
+    if (parts.length !== 3) return String(value || '');
+    return `${Number(parts[1])}.${Number(parts[2])}`;
+  }
+
+  function noticeTargetChip(notice) {
+    if (!notice || notice.target === 'all') return '<span class="notice-chip is-all">전체</span>';
+    return `<span class="notice-chip">${esc(classMeta(notice.target).short)}</span>`;
+  }
+
+  /* 로그인한 회원 화면 위쪽의 공지 벤토 카드 */
+  function noticesHTML(v) {
+    const list = (v && v.notices) || [];
+    if (!v || !list.length) return '';
+    const firstPinned = list.findIndex((n) => n.pinned);
+    return `
+      <section class="notice-bento" aria-label="공지사항">
+        <div class="notice-bento-head">
+          <h3>공지사항</h3>
+          <span>${list.length}건</span>
+        </div>
+        <ul class="notice-list">
+          ${list.map((n, index) => `
+            <li class="notice-item${n.pinned ? ' is-pinned' : ''}">
+              <details${index === firstPinned ? ' open' : ''}>
+                <summary>
+                  <span class="notice-meta">
+                    ${n.pinned ? '<span class="notice-pin">고정</span>' : ''}
+                    ${noticeTargetChip(n)}
+                    <span class="notice-date">${esc(noticeDateText(n.createdAt))}</span>
+                  </span>
+                  <span class="notice-subject">${esc(n.title)}</span>
+                  <span class="notice-toggle" aria-hidden="true"></span>
+                </summary>
+                <p class="notice-body">${esc(n.body)}</p>
+              </details>
+            </li>`).join('')}
+        </ul>
+      </section>`;
   }
 
   /* ── class ─────────────────────────────────────────────── */
@@ -835,6 +880,7 @@
 
     area.innerHTML = `
       ${identityHTML(student)}
+      ${noticesHTML(student)}
       ${statusBlockHTML(student)}
       ${offline.length ? scheduleHTML(student, visibleSessions) : ''}`;
 
@@ -1761,6 +1807,58 @@
 
   let ADMIN_DATA = null;
 
+  /* 강사 모드 — 공지 작성·관리 */
+  function adminNoticesHTML(notices) {
+    const list = notices || [];
+    let editing = UI.noticeEditing ? list.find((n) => n.id === UI.noticeEditing) : null;
+    if (UI.noticeEditing && !editing) {
+      UI.noticeEditing = null;
+      editing = null;
+    }
+    const rows = list.length
+      ? list.map((n) => `
+        <li class="notice-row${n.pinned ? ' is-pinned' : ''}${UI.noticeEditing === n.id ? ' is-editing' : ''}">
+          <div class="notice-row-main">
+            <span class="notice-meta">
+              ${n.pinned ? '<span class="notice-pin">고정</span>' : ''}
+              ${noticeTargetChip(n)}
+              <span class="notice-date">${esc(noticeDateText(n.createdAt))}</span>
+            </span>
+            <b class="notice-row-title">${esc(n.title)}</b>
+            <span class="notice-row-body">${esc(n.body)}</span>
+          </div>
+          <div class="notice-row-act">
+            <button class="btn-mini" type="button" data-notice-edit="${esc(n.id)}">수정</button>
+            <button class="btn-mini btn-mini--x" type="button" data-notice-del="${esc(n.id)}">${UI.noticeDeleteArmed === n.id ? '한 번 더' : '삭제'}</button>
+          </div>
+        </li>`).join('')
+      : '<p class="admin-empty">등록된 공지가 없어요.</p>';
+
+    return `
+      <form class="notice-form" id="noticeForm" novalidate>
+        <input class="reg-input" id="noticeTitle" type="text" maxlength="80" placeholder="공지 제목" aria-label="공지 제목" value="${esc(editing ? editing.title : '')}">
+        <div class="notice-form-row">
+          <select class="select" id="noticeTarget" aria-label="공지 대상">
+            <option value="all"${!editing || editing.target === 'all' ? ' selected' : ''}>전체 회원</option>
+            ${CLASSES.map((cls) => `<option value="${esc(cls.id)}"${editing && editing.target === cls.id ? ' selected' : ''}>${esc(cls.name)}</option>`).join('')}
+          </select>
+          <label class="notice-pin-label">
+            <input class="chk" id="noticePinned" type="checkbox"${editing && editing.pinned ? ' checked' : ''}>
+            <span>상단 고정</span>
+          </label>
+        </div>
+        <textarea class="reg-input notice-text" id="noticeBody" rows="3" maxlength="1200" placeholder="공지 내용" aria-label="공지 내용">${esc(editing ? editing.body : '')}</textarea>
+        <div class="notice-form-act">
+          <button class="btn-mini btn-mini--butter" type="submit" data-notice-save>${editing ? '수정 저장' : '공지 등록'}</button>
+          ${editing ? '<button class="btn-mini" type="button" data-notice-cancel>수정 취소</button>' : ''}
+          <span class="notice-form-hint">${editing
+            ? '수정 중인 공지를 고쳤습니다. 수정 저장을 눌러 주세요.'
+            : '전체 공지는 모든 회원에게, 수업 공지는 그 수업을 듣는 회원에게만 보입니다.'}</span>
+        </div>
+      </form>
+      <ul class="notice-rows">${rows}</ul>`;
+  }
+
   async function renderAdmin() {
     const body = $('#adminBody');
     if (!body) return;
@@ -1818,6 +1916,11 @@
       <section class="admin-block">
         <div class="admin-h"><h4>요청 / requests</h4><span>${data.pending.length}건</span></div>
         ${requests}
+      </section>
+
+      <section class="admin-block">
+        <div class="admin-h"><h4>공지사항 / notice</h4><span>${data.notices.length}건</span></div>
+        ${adminNoticesHTML(data.notices)}
       </section>
 
       <section class="admin-block">
@@ -1884,6 +1987,8 @@
     openers.forEach((btn) => {
       btn.addEventListener('click', async () => {
         UI.resetArmed = false;
+        UI.noticeEditing = null;
+        UI.noticeDeleteArmed = null;
         await renderAdmin();
         modal.showModal();
       });
@@ -1952,6 +2057,36 @@
         } catch (err) {
           toast(err.message || '수업을 바꾸지 못했어요.', true);
         }
+      }
+    });
+
+    /* 공지 등록 · 수정 저장 */
+    body.addEventListener('submit', async (event) => {
+      const form = event.target.closest('#noticeForm');
+      if (!form) return;
+      event.preventDefault();
+      const title = ($('#noticeTitle') || {}).value || '';
+      const bodyText = ($('#noticeBody') || {}).value || '';
+      const target = ($('#noticeTarget') || {}).value || 'all';
+      const pinned = !!($('#noticePinned') || {}).checked;
+      const saveBtn = form.querySelector('[data-notice-save]');
+      if (saveBtn) saveBtn.disabled = true;
+      try {
+        if (UI.noticeEditing) {
+          await api.updateNotice(UI.noticeEditing, { title, body: bodyText, target, pinned });
+          UI.noticeEditing = null;
+          await renderAdmin();
+          await renderBooking();
+          toast('공지를 수정했어요.');
+        } else {
+          await api.addNotice({ title, body: bodyText, target, pinned });
+          await renderAdmin();
+          await renderBooking();
+          toast('공지를 등록했어요.');
+        }
+      } catch (err) {
+        if (saveBtn) saveBtn.disabled = false;
+        toast(err.message || '공지를 저장하지 못했어요.', true);
       }
     });
 
@@ -2068,6 +2203,46 @@
           toast(`${v.name}님 수강권을 부여했어요 · ${passSummaryText(v)}`);
         } catch (err) {
           toast(err.message, true);
+        }
+        return;
+      }
+
+      /* 공지 — 수정 / 삭제 (삭제는 한 번 더 눌러 확인) */
+      const noticeEditBtn = event.target.closest('[data-notice-edit]');
+      if (noticeEditBtn) {
+        UI.noticeEditing = noticeEditBtn.dataset.noticeEdit;
+        UI.noticeDeleteArmed = null;
+        await renderAdmin();
+        const form = $('#noticeForm');
+        if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+
+      const noticeCancelBtn = event.target.closest('[data-notice-cancel]');
+      if (noticeCancelBtn) {
+        UI.noticeEditing = null;
+        await renderAdmin();
+        return;
+      }
+
+      const noticeDelBtn = event.target.closest('[data-notice-del]');
+      if (noticeDelBtn) {
+        const id = noticeDelBtn.dataset.noticeDel;
+        if (UI.noticeDeleteArmed !== id) {
+          UI.noticeDeleteArmed = id;
+          noticeDelBtn.textContent = '한 번 더';
+          return;
+        }
+        try {
+          await api.deleteNotice(id);
+          UI.noticeDeleteArmed = null;
+          if (UI.noticeEditing === id) UI.noticeEditing = null;
+          await renderAdmin();
+          await renderBooking();
+          toast('공지를 삭제했어요.');
+        } catch (err) {
+          UI.noticeDeleteArmed = null;
+          toast(err.message || '공지를 삭제하지 못했어요.', true);
         }
         return;
       }
