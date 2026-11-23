@@ -498,6 +498,39 @@ ol {
   padding: 2px 6px;
 }
 
+/* 수업 금액 */
+.class-price {
+  margin-top: 9px;
+  font-size: 12px;
+  font-weight: 560;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  word-break: keep-all;
+}
+
+.class-price .cp-label {
+  margin-right: 5px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--ink-45);
+}
+
+.class-price.is-unknown {
+  font-weight: 500;
+  font-size: 11.5px;
+  color: var(--ink-45);
+}
+
+.cp-was {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink-45);
+}
+
 .class-when {
   margin-top: 10px;
   padding-top: 9px;
@@ -1412,7 +1445,7 @@ table.track-table tbody th.td-ex {
 .pass-pick {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 8px 10px;
   border: 1px solid var(--line-strong);
   border-radius: 4px;
@@ -1428,12 +1461,39 @@ table.track-table tbody th.td-ex {
   margin: 0;
 }
 
-.pass-pick em {
-  margin-left: auto;
-  font-style: normal;
-  font-size: 10px;
+.pass-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pass-name {
+  font-size: 11.5px;
+  color: var(--ink-70);
+}
+
+.pass-meta {
+  font-size: 9.5px;
+  letter-spacing: 0.01em;
   color: var(--ink-45);
   white-space: nowrap;
+}
+
+.pass-amt {
+  margin-top: 1px;
+  font-size: 12px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pass-amt.is-unknown {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-45);
 }
 
 .pass-pick:has(input:checked) {
@@ -1441,8 +1501,12 @@ table.track-table tbody th.td-ex {
   color: var(--ink);
 }
 
-.pass-pick:has(input:checked) em {
-  color: var(--ink-70);
+.pass-pick:has(input:checked) .pass-name {
+  color: var(--ink);
+}
+
+.pass-pick:has(input:checked) .pass-meta {
+  color: rgba(24, 24, 24, 0.6);
 }
 
 .pass-pick:has(input:disabled) {
@@ -1475,6 +1539,109 @@ table.track-table tbody th.td-ex {
   word-break: keep-all;
 }
 
+/* 예상 결제 금액 */
+.reg-price {
+  margin-top: 10px;
+  padding: 10px 11px 11px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+}
+
+.rp-empty {
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--ink-45);
+  word-break: keep-all;
+}
+
+.rp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
+  color: var(--ink-70);
+}
+
+.rp-head em {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--ink-45);
+  white-space: nowrap;
+}
+
+.rp-lines {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.rp-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.rp-label {
+  min-width: 0;
+  color: var(--ink-70);
+  word-break: keep-all;
+}
+
+.rp-label em {
+  display: block;
+  margin-top: 1px;
+  font-style: normal;
+  font-size: 9px;
+  color: var(--ink-45);
+}
+
+.rp-amt {
+  flex: none;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-amt.is-unknown {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-45);
+}
+
+.rp-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line-strong);
+  font-size: 10.5px;
+  color: var(--ink-70);
+}
+
+.rp-total b {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-note {
+  margin-top: 7px;
+  font-size: 9px;
+  line-height: 1.65;
+  color: var(--ink-45);
+  word-break: keep-all;
+}
+
 .reg-form-foot {
   display: grid;
   gap: 8px;
@@ -1499,6 +1666,20 @@ table.track-table tbody th.td-ex {
   line-height: 1.55;
   color: var(--ink-70);
   word-break: keep-all;
+}
+
+.req-price {
+  display: block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--ink-45);
+  word-break: keep-all;
+  font-variant-numeric: tabular-nums;
+}
+
+.req-price b {
+  font-weight: 600;
+  color: var(--ink);
 }
 
 .req-kept {
