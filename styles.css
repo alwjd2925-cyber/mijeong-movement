@@ -1250,7 +1250,7 @@ table.track-table tbody th.td-ex {
 .demo-switch button {
   font-size: 12px;
   padding: 8px 13px;
-  border-radius: 999px;
+  border-radius: 10px;
   border: 1px solid var(--line-strong);
   background: var(--surface);
   color: var(--ink-70);
@@ -1273,8 +1273,8 @@ table.track-table tbody th.td-ex {
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
-  padding: 7px 12px;
-  border-radius: 999px;
+  padding: 8px 12px;
+  border-radius: 10px;
   text-align: left;
   line-height: 1.35;
 }
