@@ -21,8 +21,8 @@
   --surface-3: #e9ece5;
 
   --ink: #141518;
-  --ink-70: #4f535c;
-  --ink-45: #63666e;
+  --ink-70: #45484f;
+  --ink-45: #55585f;
   --ink-25: #8c919c;
 
   /* 솔리드 다크 */
@@ -30,8 +30,8 @@
   --dark-2: #1d1f23;
   --dark-3: #26282d;
   --on-dark: #ffffff;
-  --on-dark-70: rgba(255, 255, 255, 0.78);
-  --on-dark-45: rgba(255, 255, 255, 0.58);
+  --on-dark-70: rgba(255, 255, 255, 0.84);
+  --on-dark-45: rgba(255, 255, 255, 0.66);
   --dark-line: rgba(255, 255, 255, 0.13);
   --dark-line-strong: rgba(255, 255, 255, 0.22);
 
@@ -39,7 +39,7 @@
   --butter: #f3ff00;
   --butter-2: #e4f000;
   --on-butter: #141518;
-  --on-butter-soft: rgba(20, 21, 24, 0.72);
+  --on-butter-soft: rgba(20, 21, 24, 0.8);
 
   /* 서브 포인트 — 포커스 링 전용 */
   --blue: #136cfc;
@@ -481,8 +481,15 @@ ol {
 
 .btn:disabled {
   cursor: not-allowed;
-  opacity: 0.38;
+  opacity: 1;
+  background: var(--surface-3);
+  border-color: transparent;
+  color: #55585f;
   transform: none;
+}
+
+.btn:disabled span {
+  color: #55585f;
 }
 
 /* ── 섹션 ─────────────────────────────────────────────────── */
@@ -604,14 +611,14 @@ ol {
 .mode {
   display: inline-flex;
   align-items: center;
-  height: 20px;
+  height: 21px;
   padding: 0 8px;
   border: 1px solid var(--ink);
   border-radius: 999px;
   background: var(--ink);
-  font-size: 9px;
+  font-size: 9.5px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   color: var(--on-dark);
   white-space: nowrap;
 }
@@ -632,9 +639,9 @@ ol {
 .class-en {
   display: block;
   margin-top: 4px;
-  font-size: 9.5px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
   color: var(--ink-45);
   text-transform: uppercase;
 }
@@ -885,10 +892,11 @@ table.track-table tbody th.td-ex {
 
 .ex-video {
   margin-top: 3px;
-  font-size: 9px;
+  font-size: 9.5px;
+  font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--on-dark-45);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.34);
 }
 
 .ex-video:hover {
@@ -903,7 +911,7 @@ table.track-table tbody th.td-ex {
   height: 30px;
   min-height: 30px;
   padding: 0;
-  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  border: 1.5px solid rgba(255, 255, 255, 0.34);
   border-radius: 9px;
   background-color: transparent;
   background-image: none;
@@ -921,7 +929,7 @@ table.track-table tbody th.td-ex {
 }
 
 .tick:hover {
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.55);
 }
 
 .tick.is-on {
@@ -936,7 +944,7 @@ table.track-table tbody th.td-ex {
 }
 
 .tick:disabled {
-  opacity: 0.5;
+  opacity: 0.7;
   cursor: default;
 }
 
@@ -982,7 +990,7 @@ table.track-table tbody th.td-ex {
 }
 
 #onlineNote::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.56);
 }
 
 #onlineNote:focus {
@@ -1273,7 +1281,7 @@ table.track-table tbody th.td-ex {
 }
 
 .demo-hint {
-  font-size: 9.5px;
+  font-size: 10px;
   color: var(--ink-45);
 }
 
@@ -1671,9 +1679,9 @@ table.track-table tbody th.td-ex {
   padding: 1px 7px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
-  font-size: 8.5px;
+  font-size: 9.5px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   color: var(--ink-45);
   white-space: nowrap;
 }
@@ -1702,7 +1710,7 @@ table.track-table tbody th.td-ex {
 }
 
 .reg-pass.is-muted {
-  opacity: 0.5;
+  opacity: 0.62;
 }
 
 .reg-pass-label {
@@ -2167,13 +2175,16 @@ table.track-table tbody th.td-ex {
 }
 
 .btn-mini:disabled {
-  opacity: 0.38;
+  opacity: 1;
   cursor: not-allowed;
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: #55585f;
 }
 
 .btn-mini:disabled:hover {
-  background: var(--surface);
-  border-color: var(--line-strong);
+  background: var(--surface-2);
+  border-color: var(--line);
 }
 
 .badge {
@@ -3146,7 +3157,7 @@ input.chk {
   height: 16px;
   margin: 0;
   padding: 0;
-  border: 1.5px solid var(--ink-25);
+  border: 1.5px solid #767a83;
   border-radius: 5px;
   background-color: transparent;
   background-image: none;
@@ -3158,13 +3169,13 @@ input.chk {
 }
 
 input.chk:checked {
-  border-color: var(--ink-25);
+  border-color: #767a83;
   background-color: transparent;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'><path d='M2.2 6.2 5.4 9.4 11.8 2.3' fill='none' stroke='%23141518' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
 
 input.chk:disabled {
-  opacity: 0.55;
+  opacity: 0.7;
   cursor: default;
 }
 
