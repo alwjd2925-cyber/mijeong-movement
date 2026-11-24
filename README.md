@@ -248,6 +248,33 @@
 - API: `api.listNotices(studentId)` · `api.addNotice({title, body, target, pinned})` · `api.updateNotice(id, fields)` · `api.deleteNotice(id)`.
   `api.getStudent(id)`의 `notices`에도 그 회원이 볼 공지가 실립니다.
 
+## 코칭 영상 업로드 · 피드백 (핸드스탠드 온라인 코칭)
+
+`핸드스탠드 온라인 코칭` 탭(`#online` → 코칭) 에만 붙는 개인 영상 카드입니다. 모닝 모빌리티에는 나오지 않습니다.
+
+- **수강생 화면**: 주간 체크표·Coaching Note 아래에 `개인 코칭 영상 / coaching video` 섹션(`#coachVideo`).
+  - 등록 폼: 동작 이름(제목, 60자) · 주차(지금 보고 있는 주차가 기본) · 수강생 메모(500자) ·
+    영상 파일(`<input type="file" accept="video/*">`, 모바일에서 카메라/앨범) · 영상 링크(유튜브·구글드라이브 URL).
+    **파일 또는 링크 중 하나만 있어도** 등록됩니다(링크는 `http://` · `https://` 주소만).
+  - 영상 파일(`Blob`)은 `localStorage` 대신 **IndexedDB `mijeong_video_db`(store `videos`)** 에 두고,
+    화면에서는 `blob:` URL 로 `<video controls playsinline>` 즉시 재생. 새로고침해도 그대로입니다.
+    제목·주차·메모·파일명/용량/형식·링크·업로드 시각·강사 코멘트·코멘트 시각·상태는 `localStorage`(`videos[]`)에 저장합니다.
+  - 내 목록: 상태 칩 `피드백 대기`(라임 틴트) / `코멘트 완료`(#F3FF00), 영상 플레이어(또는 `영상 링크 열기 ↗`),
+    메모, **강사 코멘트 박스**(있으면 코멘트·작성 시각, 없으면 대기 안내), `삭제`(한 번 더 눌러 확인).
+  - 폼 아래 작은 안내: "시안에서는 업로드한 영상 파일이 현재 브라우저에 저장되며, 실운영 DB 연결 시 강사와 기기 간 공유됩니다."
+  - 예시 항목 2건이 데모 수강생 정민아에게 들어 있습니다 — `코멘트 완료` 1건 + `피드백 대기` 1건,
+    둘 다 `assets/coaching-sample.mp4` · `assets/coaching-sample.webm` 샘플 영상으로 바로 재생됩니다.
+- **강사 모드**: 요청 다음에 `코칭 영상 피드백 / video` 섹션(`#adminVideos`), 제목 옆 `피드백 대기 N` 배지.
+  - 필터 `전체 N` / `피드백 대기 N` / `코멘트 완료 N`, 카드에 수강생 이름·코드 · 주차 · 제목 · 메모 · 영상 · 코멘트 입력.
+  - `코멘트 저장`을 누르면 상태가 `코멘트 완료`로 바뀌고 수강생 화면·배지·필터에 즉시 반영됩니다.
+    코멘트를 고쳐 다시 저장하면 수정됩니다(하나의 코멘트만 유지).
+- API: `api.listVideos(studentId)` · `api.addVideo(studentId, {title, weekKey, note, link, file:{name,size,type}})` ·
+  `api.deleteVideo(studentId, id)` · `api.addVideoComment(id, text)`.
+  `api.adminData()`에 `videos`(최신순, 수강생 이름 포함)와 `videoPending`(대기 건수)가 실립니다.
+- 예전 데이터에는 예시 영상 2건이 한 번 들어가고, 수강생이 모두 지우면 빈 상태로 남습니다.
+- 영상 업로드·재생·코멘트는 `work/_checks/check-videos.js`(jsdom) 와
+  `work/_checks/check-mobile-videos.js`(390px 실제 브라우저 · IndexedDB 유지 · 가로 넘침 0)에서 확인합니다.
+
 ## 확인해 볼 흐름
 
 1. **수업별 화면** — 로그인 전에는 `class` · `login`만 보입니다. 데모 버튼 4개를 눌러 보면
@@ -266,6 +293,9 @@
    새로고침해도 그대로 남습니다. 노트 카드를 누르면 그 주차로 이동합니다.
 9. **공지사항** — 로그인하면 `class` 다음 `notice:` 섹션이 열립니다. `박지우`(모닝만)는 전체 공지 1건만, `이서연`은 전체 + 핸드스탠드 2건이 보입니다.
    강사 모드 → `공지사항`에서 모닝 대상 공지를 등록하면 박지우 화면에 바로 나타나고, `수정`·`삭제`도 그 자리에서 됩니다.
+10. **코칭 영상 · 피드백** — `정민아`로 로그인 → `online` → `핸드스탠드 온라인 코칭` 탭에서 `개인 코칭 영상` 섹션을 봅니다.
+   동작 이름을 적고 핸드폰 영상을 고르거나 링크를 넣어 `영상 등록` → `피드백 대기` 카드가 생기고 바로 재생됩니다(새로고침해도 유지).
+   강사 모드 → `코칭 영상 피드백`에서 `피드백 대기 N` 배지와 필터를 확인하고 코멘트를 저장하면 `코멘트 완료`로 바뀌며 정민아 화면에 바로 보입니다.
 
 ## 아직 정해지지 않아 가정한 부분
 
@@ -278,6 +308,9 @@
   실제 결제·진행 방식은 인스타 DM으로 안내하는 것으로 두었습니다.
 - 수업 소개 문구와 큐잉 문구는 시안용 초안입니다. 실제 수업 언어로 바꿔 주세요.
 - 수업 정원(자리 수) 개념은 아직 없습니다.
+- **코칭 영상**은 시안이라 이 브라우저 안에서만 보입니다(강사와 기기 공유는 실운영 DB·스토리지 연결 후).
+  한 파일 80MB까지 올릴 수 있게 두었고, 영상은 mp4(H.264)를 기본으로, 재생하지 못하는 브라우저를 위해
+  샘플에만 webm 대체본을 함께 걸었습니다. 올린 영상의 길이 제한은 두지 않았습니다.
 
 ## 실제 운영 배포까지
 
@@ -289,7 +322,10 @@
      `passes(id, student_id, class_id, type, total, used, issued_at, expires_at)` (expires_at null = 유효기간 없음),
      `sessions(id, class_id, starts_at, ends_at)`,
      `bookings(id, student_id, session_id, created_at, status)`,
-     `requests(id, student_id, type, status, created_at, resolved_at)`.
+     `requests(id, student_id, type, status, created_at, resolved_at)`,
+     `videos(id, student_id, title, week_key, note, file_path, file_name, file_size, file_type, link, created_at, status, comment, comment_at)`.
+   - 영상 파일은 Storage 버킷(`videos/{student_id}/…`)에 올리고 `file_path`만 저장합니다.
+     재생은 서명 URL(Signed URL)로 내려 주고, RLS로 본인과 강사만 읽게 합니다.
    - 예약/취소/부여는 동시성 때문에 **RPC 함수**로 처리(잔여 횟수 확인 + 삽입을 한 트랜잭션에).
    - 취소 마감(시작 1시간 전)은 서버에서도 다시 검사.
    - RLS: 수강생은 자기 행만 읽기/쓰기, 강사는 전체.

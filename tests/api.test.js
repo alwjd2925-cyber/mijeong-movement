@@ -905,6 +905,99 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     eq('나머지는 뒤에', order.slice(1).sort(), ['A', 'C']);
   }
 
+  /* ────────────────────────────────────────────────────────
+     17. 코칭 영상 — 업로드 · 코멘트 · 삭제
+     ──────────────────────────────────────────────────────── */
+  console.log('\n[17] 코칭 영상');
+  {
+    /* 코칭을 듣는 수강생을 넣은 상태 */
+    const withCoaching = (extra) => {
+      const students = baseStudents(NOW).concat([{
+        id: 'st_coaching', name: '정민아', code: 'MJ-1125', classes: ['coaching'], passes: {},
+        createdAt: new Date(NOW - 20 * DAY).toISOString(),
+      }]);
+      return Object.assign({ version: 3, students, requests: [], bookings: [] }, extra || {});
+    };
+
+    /* 예전 데이터(영상 배열 없음) → 예시 영상 2건이 한 번 들어갑니다 */
+    const seeded = makeContext({ now: NOW, state: withCoaching() });
+    const demo = await seeded.api.listVideos('st_coaching');
+    eq('예시 영상 2건', demo.length, 2);
+    eq('최신순 — 대기 영상이 먼저', demo.map((v) => v.status), ['pending', 'done']);
+    eq('코멘트 완료 예시에 코멘트', demo[1].comment.length > 0, true);
+    eq('예시는 샘플 영상 경로', demo.every((v) => v.demoFile === 'assets/coaching-sample.mp4'), true);
+    eq('코칭을 안 듣는 수강생은 영상 없음', await seeded.api.listVideos('st_only_morn'), []);
+    eq('없는 수강생도 빈 목록', await seeded.api.listVideos('nobody'), []);
+
+    const { api, read } = makeContext({ now: NOW, state: withCoaching({ videos: [] }) });
+    const wk = api.weekKey();
+
+    /* 등록 — 검증 */
+    await throws('제목 없는 영상은 막힘', () => api.addVideo('st_coaching', { title: '  ', weekKey: wk, link: 'https://youtu.be/x' }), /제목/);
+    await throws('너무 긴 제목은 막힘', () => api.addVideo('st_coaching', { title: 'x'.repeat(61), weekKey: wk, link: 'https://youtu.be/x' }), /60자/);
+    await throws('주차 없는 영상은 막힘', () => api.addVideo('st_coaching', { title: '제목', weekKey: '', link: 'https://youtu.be/x' }), /주차/);
+    await throws('잘못된 링크는 막힘', () => api.addVideo('st_coaching', { title: '제목', weekKey: wk, link: 'youtu.be/x' }), /http/);
+    await throws('파일·링크 둘 다 없으면 막힘', () => api.addVideo('st_coaching', { title: '제목', weekKey: wk }), /파일이나 영상 링크/);
+    await throws('코칭을 안 듣는 수강생은 막힘', () => api.addVideo('st_only_off', { title: '제목', weekKey: wk, link: 'https://youtu.be/x' }), /핸드스탠드 온라인 코칭/);
+    await throws('없는 수강생은 막힘', () => api.addVideo('nobody', { title: '제목', weekKey: wk, link: 'https://youtu.be/x' }), /수강생/);
+    eq('검증 실패 뒤에는 빈 목록', await api.listVideos('st_coaching'), []);
+
+    /* 등록 — 링크만 */
+    const linkOne = await api.addVideo('st_coaching', {
+      title: '  벽 10초 홀드  ', weekKey: wk, note: '  어깨가 꺾여요  ', link: '  https://www.youtube.com/watch?v=abc  ',
+    });
+    ok('영상 id가 생김', /^cv_/.test(linkOne.id));
+    eq('제목·메모 앞뒤 공백 정리', [linkOne.title, linkOne.note], ['벽 10초 홀드', '어깨가 꺾여요']);
+    eq('링크 앞뒤 공백 정리', linkOne.link, 'https://www.youtube.com/watch?v=abc');
+    eq('처음 상태는 피드백 대기', linkOne.status, 'pending');
+    eq('코멘트는 비어 있음', [linkOne.comment, linkOne.commentAt], ['', null]);
+    eq('주차 저장', linkOne.weekKey, wk);
+    ok('저장소에 남음', read().videos.some((v) => v.id === linkOne.id));
+
+    /* 등록 — 파일 정보만 (Blob은 app.js가 IndexedDB에 둡니다) */
+    const fileOne = await api.addVideo('st_coaching', {
+      title: '손목 들기 20회', weekKey: wk,
+      file: { name: 'wrist.mp4', size: 1048576, type: 'video/mp4' },
+    });
+    eq('파일 이름·용량 저장', [fileOne.fileName, fileOne.fileSize, fileOne.fileType], ['wrist.mp4', 1048576, 'video/mp4']);
+    eq('최신 영상이 맨 앞', (await api.listVideos('st_coaching')).map((v) => v.id), [fileOne.id, linkOne.id]);
+
+    /* 코멘트 — 저장 · 수정 · 검증 */
+    await throws('빈 코멘트는 막힘', () => api.addVideoComment(linkOne.id, '   '), /코멘트/);
+    await throws('없는 영상 코멘트는 막힘', () => api.addVideoComment('cv_none', '좋아요'), /영상을 찾을 수/);
+    const commented = await api.addVideoComment(linkOne.id, '  손목을 세우고 벽에서 발을 띄워 보세요.  ');
+    eq('코멘트 저장', commented.comment, '손목을 세우고 벽에서 발을 띄워 보세요.');
+    eq('상태가 코멘트 완료로', commented.status, 'done');
+    ok('코멘트 시각 기록', !!commented.commentAt && !Number.isNaN(new Date(commented.commentAt).getTime()));
+    const edited = await api.addVideoComment(linkOne.id, '다음 주에는 5초까지 해 봅시다.');
+    eq('다시 저장하면 수정', edited.comment, '다음 주에는 5초까지 해 봅시다.');
+    eq('영상은 그대로 1건', (await api.listVideos('st_coaching')).length, 2);
+
+    /* 강사 화면 데이터 — 대기 건수 */
+    const adminData = await api.adminData();
+    eq('강사 목록에 영상 2건', adminData.videos.length, 2);
+    eq('피드백 대기 1건', adminData.videoPending, 1);
+    eq('수강생 이름이 붙음', adminData.videos[0].studentName, '정민아');
+
+    /* 삭제 — 남의 영상은 못 지웁니다 */
+    await throws('다른 수강생 영상은 못 지움', () => api.deleteVideo('st_only_morn', fileOne.id), /영상을 찾을 수/);
+    await throws('없는 영상 삭제는 막힘', () => api.deleteVideo('st_coaching', 'cv_none'), /영상을 찾을 수/);
+    eq('삭제 성공', await api.deleteVideo('st_coaching', fileOne.id), true);
+    eq('목록에서 사라짐', (await api.listVideos('st_coaching')).map((v) => v.id), [linkOne.id]);
+
+    /* 새로고침해도 그대로 */
+    const again = makeContext({ now: NOW, state: read() });
+    const reloaded = await again.api.listVideos('st_coaching');
+    eq('다시 열어도 영상 유지', reloaded.map((v) => v.id), [linkOne.id]);
+    eq('다시 열어도 코멘트 유지', [reloaded[0].status, reloaded[0].comment], ['done', '다음 주에는 5초까지 해 봅시다.']);
+
+    /* 모두 지우면 빈 상태가 유지됩니다 */
+    await again.api.deleteVideo('st_coaching', linkOne.id);
+    eq('모두 지우면 빈 목록', again.read().videos, []);
+    const emptyReload = makeContext({ now: NOW, state: again.read() });
+    eq('빈 목록은 다시 채우지 않음', await emptyReload.api.listVideos('st_coaching'), []);
+  }
+
   /* ── 결과 ─────────────────────────────────────────────── */
   console.log(`\n${failures.length ? '✗ 실패' : '✓ 통과'} — ${passed}개 확인, ${failures.length}개 실패`);
   if (failures.length) {
