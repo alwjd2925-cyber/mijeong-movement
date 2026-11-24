@@ -1658,6 +1658,11 @@ table.track-table tbody th.td-ex {
   padding: 13px 14px;
 }
 
+/* 강사 목록은 코멘트 입력까지 한 화면에 보이도록 영상 미리보기를 납작하게 */
+.cv-card--admin .cv-video {
+  max-height: 180px;
+}
+
 .cv-week-inline {
   color: var(--ink-70);
 }
