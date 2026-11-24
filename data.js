@@ -850,21 +850,26 @@ const api = (() => {
     };
   }
 
-  /* 코칭 영상 목록 — 최신순, 수강생 이름을 붙여 강사 화면에서도 씁니다 */
+  /* 코칭 영상 목록 — 최신순, 수강생 이름을 붙여 강사 화면에서도 씁니다.
+     업로드 시각이 같으면(같은 순간에 올린 경우) 나중에 들어온 것이 위로 갑니다. */
   function videoRows(state) {
-    return (state.videos || [])
-      .map(normalizeVideo)
-      .filter((v) => v && v.programId === VIDEO_PROGRAM)
-      .map((v) => {
-        const student = (state.students || []).find((x) => x.id === v.studentId);
+    const rows = (state.videos || [])
+      .map((raw, index) => {
+        const video = normalizeVideo(raw);
+        if (!video || video.programId !== VIDEO_PROGRAM) return null;
+        const student = (state.students || []).find((x) => x.id === video.studentId);
         if (!student) return null;
-        return { ...v, studentName: student.name, studentCode: student.code };
+        return { ...video, studentName: student.name, studentCode: student.code, _order: index };
       })
-      .filter(Boolean)
-      .sort((a, b) => {
-        if (a.createdAt !== b.createdAt) return String(a.createdAt) < String(b.createdAt) ? 1 : -1;
-        return String(a.id) < String(b.id) ? 1 : -1;
-      });
+      .filter(Boolean);
+    rows.sort((a, b) => {
+      if (a.createdAt !== b.createdAt) return String(a.createdAt) < String(b.createdAt) ? 1 : -1;
+      return b._order - a._order;
+    });
+    return rows.map((row) => {
+      const { _order, ...video } = row;
+      return video;
+    });
   }
 
   function videoLinkValue(value) {
