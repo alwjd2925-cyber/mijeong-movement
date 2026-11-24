@@ -631,7 +631,7 @@ const api = (() => {
         createdAt: iso(addDays(now, -110)),
       },
     ];
-    const state = { version: 3, students, requests: [], bookings: [], notices: demoNotices(now) };
+    const state = { version: 3, students, requests: [], bookings: [], notices: demoNotices(now), videos: demoVideos(now) };
 
     const sessions = buildSessions(now, CONFIG.bookingWindowDays);
     const first = (id) => sessions.find((s) => s.classId === id) || null;
@@ -776,6 +776,107 @@ const api = (() => {
     ];
   }
 
+  /* ── 코칭 영상 ──────────────────────────────────────────────
+     핸드스탠드 온라인 코칭 수강생이 올린 개인 영상입니다.
+     영상 파일(Blob)은 app.js가 IndexedDB(mijeong_video_db)에 두고,
+     여기에는 제목 · 주차 · 메모 · 파일 정보 · 링크 · 강사 코멘트만 남깁니다.
+     (실운영에서는 videos 테이블 + 스토리지 업로드로 바뀝니다) */
+  const VIDEO_PROGRAM = 'coaching';
+  const VIDEO_TITLE_MAX = 60;
+  const VIDEO_NOTE_MAX = 500;
+  const VIDEO_COMMENT_MAX = 600;
+  const VIDEO_LINK_MAX = 500;
+
+  /* 시안용 예시 — 정민아(코칭 데모 수강생)의 영상 2건 (코멘트 완료 1 · 피드백 대기 1) */
+  function demoVideos(now) {
+    const iso = (d) => d.toISOString();
+    return [
+      {
+        id: 'cv_demo1',
+        studentId: 'st_coaching',
+        programId: VIDEO_PROGRAM,
+        title: '벽 10초 홀드 연습',
+        weekKey: weekKeyOf(addDays(now, -7).getTime()),
+        note: '어깨가 자꾸 꺾이는 느낌이에요. 벽에서 발을 떼면 2초쯤 버티다가 내려옵니다.',
+        fileName: '벽홀드-연습.mp4',
+        fileSize: 2458624,
+        fileType: 'video/mp4',
+        link: '',
+        demoFile: 'assets/coaching-sample.mp4',
+        createdAt: iso(addDays(now, -6)),
+        status: 'done',
+        comment: '벽 홀드 자세 좋아요. 손목이 조금 뒤로 넘어가니 손가락 뿌리를 바닥으로 눌러 주세요. 다음 주에는 벽에서 발을 떼고 3초를 목표로 해 봅시다.',
+        commentAt: iso(addDays(now, -5)),
+      },
+      {
+        id: 'cv_demo2',
+        studentId: 'st_coaching',
+        programId: VIDEO_PROGRAM,
+        title: '손목 들기 20회 + walking to wall',
+        weekKey: weekKeyOf(now.getTime()),
+        note: '이번 주는 손목이 덜 아팠어요. walking to wall 3걸음까지 갔습니다.',
+        fileName: 'walking-to-wall.mp4',
+        fileSize: 1883136,
+        fileType: 'video/mp4',
+        link: '',
+        demoFile: 'assets/coaching-sample.mp4',
+        createdAt: iso(addDays(now, -1)),
+        status: 'pending',
+        comment: '',
+        commentAt: null,
+      },
+    ];
+  }
+
+  /* 저장된 영상 한 건을 화면이 기대하는 모양으로 맞춥니다 */
+  function normalizeVideo(raw) {
+    if (!raw || typeof raw !== 'object' || !raw.id) return null;
+    return {
+      id: String(raw.id),
+      studentId: String(raw.studentId || ''),
+      programId: String(raw.programId || VIDEO_PROGRAM),
+      title: String(raw.title || ''),
+      weekKey: String(raw.weekKey || ''),
+      note: String(raw.note || ''),
+      fileName: String(raw.fileName || ''),
+      fileSize: Number(raw.fileSize) > 0 ? Math.round(Number(raw.fileSize)) : 0,
+      fileType: String(raw.fileType || ''),
+      link: String(raw.link || ''),
+      demoFile: String(raw.demoFile || ''),
+      createdAt: String(raw.createdAt || ''),
+      status: raw.status === 'done' ? 'done' : 'pending',
+      comment: String(raw.comment || ''),
+      commentAt: raw.commentAt ? String(raw.commentAt) : null,
+    };
+  }
+
+  /* 코칭 영상 목록 — 최신순, 수강생 이름을 붙여 강사 화면에서도 씁니다 */
+  function videoRows(state) {
+    return (state.videos || [])
+      .map(normalizeVideo)
+      .filter((v) => v && v.programId === VIDEO_PROGRAM)
+      .map((v) => {
+        const student = (state.students || []).find((x) => x.id === v.studentId);
+        if (!student) return null;
+        return { ...v, studentName: student.name, studentCode: student.code };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.createdAt !== b.createdAt) return String(a.createdAt) < String(b.createdAt) ? 1 : -1;
+        return String(a.id) < String(b.id) ? 1 : -1;
+      });
+  }
+
+  function videoLinkValue(value) {
+    const text = String(value == null ? '' : value).trim();
+    if (!text) return '';
+    if (text.length > VIDEO_LINK_MAX) throw new Error(`영상 링크는 ${VIDEO_LINK_MAX}자까지 넣을 수 있어요.`);
+    if (!/^https?:\/\/[^\s]+\.[^\s]+$/i.test(text)) {
+      throw new Error('영상 링크는 http:// 또는 https://로 시작하는 주소를 넣어 주세요.');
+    }
+    return text;
+  }
+
   function toBool(value) {
     return value === true || value === 'true' || value === 'on' || value === 1 || value === '1';
   }
@@ -853,6 +954,12 @@ const api = (() => {
        강사가 모두 지우면 빈 배열로 남아 다시 채우지 않습니다. */
     if (!Array.isArray(state.notices)) {
       state.notices = demoNotices(new Date());
+      save();
+    }
+    /* 코칭 영상 기능 이전 데이터에도 예시 영상 2건을 한 번 넣어 둡니다.
+       수강생이 모두 지우면 빈 배열로 남아 다시 채우지 않습니다. */
+    if (!Array.isArray(state.videos)) {
+      state.videos = demoVideos(new Date());
       save();
     }
     migrateClasses();
@@ -1485,6 +1592,89 @@ const api = (() => {
       return JSON.parse(JSON.stringify(rec));
     },
 
+    /* ── 코칭 영상: 수강생 업로드 · 조회 · 삭제 ── */
+    async listVideos(studentId) {
+      const s = load();
+      if (!studentId) return [];
+      return videoRows(s).filter((v) => v.studentId === studentId);
+    },
+
+    /* file: { name, size, type } — 실제 Blob은 app.js가 IndexedDB에 저장합니다 */
+    async addVideo(studentId, input = {}) {
+      const s = load();
+      const student = s.students.find((x) => x.id === studentId);
+      if (!student) throw new Error('수강생 정보를 찾을 수 없어요.');
+      if (accessFor(student).online.indexOf(VIDEO_PROGRAM) === -1) {
+        throw new Error('핸드스탠드 온라인 코칭을 듣는 수강생만 영상을 올릴 수 있어요.');
+      }
+
+      const title = String(input.title == null ? '' : input.title).replace(/\r\n/g, '\n').trim();
+      if (!title) throw new Error('영상 제목을 입력해 주세요.');
+      if (title.length > VIDEO_TITLE_MAX) throw new Error(`영상 제목은 ${VIDEO_TITLE_MAX}자까지 쓸 수 있어요.`);
+
+      const weekKeyValue = String(input.weekKey || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(weekKeyValue)) throw new Error('주차를 다시 선택해 주세요.');
+
+      const note = String(input.note == null ? '' : input.note).replace(/\r\n/g, '\n').trim();
+      if (note.length > VIDEO_NOTE_MAX) throw new Error(`수강생 메모는 ${VIDEO_NOTE_MAX}자까지 쓸 수 있어요.`);
+
+      const link = videoLinkValue(input.link);
+      const file = input.file || null;
+      const fileName = file && file.name ? String(file.name).slice(0, 120) : '';
+      const fileSize = file && Number(file.size) > 0 ? Math.round(Number(file.size)) : 0;
+      const fileType = file && file.type ? String(file.type) : '';
+      if (!fileName && !link) throw new Error('영상 파일이나 영상 링크 중 하나는 있어야 해요.');
+
+      if (!Array.isArray(s.videos)) s.videos = [];
+      const video = {
+        id: uid('cv'),
+        studentId,
+        programId: VIDEO_PROGRAM,
+        title,
+        weekKey: weekKeyValue,
+        note,
+        fileName,
+        fileSize,
+        fileType,
+        link,
+        demoFile: '',
+        createdAt: new Date().toISOString(),
+        status: 'pending',
+        comment: '',
+        commentAt: null,
+      };
+      s.videos.push(video);
+      save();
+      return normalizeVideo(video);
+    },
+
+    async deleteVideo(studentId, videoId) {
+      const s = load();
+      const list = s.videos || [];
+      const hit = list.find((v) => v && v.id === videoId && (!studentId || v.studentId === studentId));
+      if (!hit) throw new Error('코칭 영상을 찾을 수 없어요.');
+      s.videos = list.filter((v) => v.id !== videoId);
+      save();
+      return true;
+    },
+
+    /* ── 강사: 코칭 코멘트 저장 (다시 저장하면 수정) ── */
+    async addVideoComment(videoId, text) {
+      const s = load();
+      const video = (s.videos || []).find((v) => v && v.id === videoId);
+      if (!video) throw new Error('코칭 영상을 찾을 수 없어요.');
+      const comment = String(text == null ? '' : text).replace(/\r\n/g, '\n').trim();
+      if (!comment) throw new Error('피드백 코멘트를 입력해 주세요.');
+      if (comment.length > VIDEO_COMMENT_MAX) {
+        throw new Error(`피드백 코멘트는 ${VIDEO_COMMENT_MAX}자까지 쓸 수 있어요.`);
+      }
+      video.comment = comment;
+      video.commentAt = new Date().toISOString();
+      video.status = 'done';
+      save();
+      return normalizeVideo(video);
+    },
+
     /* ── 강사 화면 데이터 ── */
     async adminData() {
       const s = load();
@@ -1498,6 +1688,7 @@ const api = (() => {
         };
       });
       const nameOf = new Map(students.map((st) => [st.id, st]));
+      const videos = videoRows(s);
 
       const byDay = new Map();
       sessions.forEach((session) => {
@@ -1540,6 +1731,8 @@ const api = (() => {
         }),
         online: onlineSummary(s, weekKeyOf(now)),
         onlineWeekKey: weekKeyOf(now),
+        videos,
+        videoPending: videos.filter((v) => v.status !== 'done').length,
         pending: s.requests
           .filter((r) => r.status === 'pending')
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))

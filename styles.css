@@ -1246,6 +1246,434 @@ table.track-table tbody th.td-ex {
   box-shadow: inset 0 -0.5em 0 var(--butter);
 }
 
+/* ── 코칭 영상 (수강생 업로드 · 강사 피드백) ─────────────── */
+.coach-video {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--dark-line);
+  min-width: 0;
+}
+
+.cv-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cv-head h4 {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--on-dark);
+}
+
+.cv-head h4 span {
+  margin-left: 6px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--on-dark-45);
+  text-transform: lowercase;
+  font-weight: 500;
+}
+
+.cv-count {
+  font-size: 10.5px;
+  color: var(--on-dark-45);
+  white-space: nowrap;
+}
+
+.cv-lede {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--on-dark-70);
+  word-break: keep-all;
+}
+
+.cv-form {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--dark-line);
+  border-radius: var(--radius-md);
+  background: var(--dark-2);
+  display: grid;
+  gap: 8px;
+}
+
+.cv-form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: 8px;
+}
+
+.cv-input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--dark-line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cv-input::placeholder {
+  color: var(--ink-45);
+}
+
+.cv-input:focus {
+  outline: none;
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(243, 255, 0, 0.55);
+}
+
+.cv-form .select {
+  width: 100%;
+  height: 38px;
+}
+
+.cv-textarea {
+  resize: vertical;
+  line-height: 1.65;
+}
+
+/* 파일 선택 — 모바일에서는 탭하면 카메라/앨범이 열립니다 */
+.cv-file {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 1px dashed var(--dark-line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.cv-file input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cv-file-btn {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--butter);
+  color: var(--on-butter);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.cv-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--ink-45);
+}
+
+.cv-file-name.is-picked {
+  color: var(--lime-ink);
+  font-weight: 600;
+}
+
+.cv-form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cv-form-hint {
+  font-size: 10px;
+  color: var(--ink-45);
+  line-height: 1.5;
+}
+
+.cv-local {
+  margin-top: 8px;
+  font-size: 9.5px;
+  line-height: 1.65;
+  color: var(--ink-45);
+  word-break: keep-all;
+}
+
+/* 내 코칭 영상 · 강사 피드백 카드 */
+.cv-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  list-style: none;
+}
+
+.cv-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--dark-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.cv-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cv-status {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.cv-status.is-pending {
+  background: var(--lime-tint);
+  border: 1px solid var(--lime-line);
+  color: var(--lime-ink);
+}
+
+.cv-status.is-done {
+  background: var(--butter);
+  border: 1px solid var(--butter-line);
+  color: var(--on-butter);
+}
+
+.cv-week,
+.cv-who {
+  font-size: 10px;
+  color: var(--ink-45);
+}
+
+.cv-title {
+  display: block;
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.cv-meta {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--ink-45);
+  overflow-wrap: anywhere;
+}
+
+.cv-player {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+}
+
+.cv-video {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  max-height: 420px;
+  border-radius: 8px;
+  background: #141518;
+}
+
+.cv-missing {
+  padding: 22px 12px;
+  text-align: center;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: #c9cdc4;
+}
+
+.cv-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.cv-link:hover {
+  border-color: var(--ink);
+}
+
+.cv-body {
+  margin-top: 10px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--ink-70);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cv-comment {
+  margin-top: 11px;
+  padding: 11px 12px;
+  border: 1px solid var(--dark-line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.cv-comment.is-done {
+  border-color: var(--lime-line);
+  background: var(--lime-tint);
+}
+
+.cv-comment-label {
+  display: inline-block;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lime-ink);
+}
+
+.cv-comment-body {
+  margin-top: 6px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cv-comment-at {
+  display: block;
+  margin-top: 6px;
+  font-size: 9.5px;
+  color: var(--ink-45);
+}
+
+.cv-comment-wait {
+  margin-top: 5px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-45);
+}
+
+.cv-card-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.cv-empty {
+  margin-top: 11px;
+  padding: 16px 14px;
+  border: 1px dashed var(--dark-line-strong);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--ink-45);
+  text-align: center;
+  word-break: keep-all;
+}
+
+/* 강사 모드 코칭 영상 피드백 */
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--butter);
+  color: var(--on-butter);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.cv-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 2px;
+}
+
+.cv-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-45);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cv-filter span {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--ink-45);
+}
+
+.cv-filter:hover {
+  border-color: var(--ink);
+}
+
+.cv-filter.is-active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #ffffff;
+}
+
+.cv-filter.is-active span {
+  color: var(--butter);
+}
+
+.cv-card--admin {
+  padding: 13px 14px;
+}
+
+.cv-week-inline {
+  color: var(--ink-70);
+}
+
+.cv-comment-form {
+  display: grid;
+  gap: 7px;
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px dashed var(--dark-line);
+}
+
+.cv-comment-form .cv-comment-label {
+  color: var(--ink-45);
+}
+
 /* 강사 모드: 온라인 체크 요약 */
 .on-row {
   padding: 10px 0;
@@ -4285,6 +4713,24 @@ input.chk:focus-visible {
 
   .pass-list {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 코칭 영상 — 390px에서 폼·카드가 한 줄로 서고 입력 글자는 확대되지 않게 16px */
+  .cv-form-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cv-input {
+    font-size: 16px;
+  }
+
+  .cv-form .select {
+    height: 40px;
+    font-size: 13px;
+  }
+
+  .cv-video {
+    max-height: 300px;
   }
 }
 

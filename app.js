@@ -64,6 +64,8 @@
     adminGrantStudent: '', // 수강권 부여에서 고른 수강생
     noticeEditing: null, // 강사 모드에서 수정 중인 공지 id
     noticeDeleteArmed: null, // 삭제를 한 번 눌러 확인을 기다리는 공지 id
+    videoDeleteArmed: null, // 삭제를 한 번 눌러 확인을 기다리는 코칭 영상 id
+    videoFilter: 'all',     // 강사 모드 코칭 영상 필터 (all | pending | done)
   };
 
   /* ── 수업별 접근 제어 ──────────────────────────────────── */
@@ -1442,9 +1444,276 @@
       </div>`;
   }
 
+  /* ── 코칭 영상 파일 보관 (IndexedDB) ─────────────────────────
+     영상 Blob은 localStorage 용량(5MB)을 피해 mijeong_video_db 에 두고,
+     화면에는 objectURL로 바로 재생합니다. IndexedDB를 못 쓰는 환경(시험 단계)에서는
+     메모리에만 잠시 두고, 새로고침 후에는 안내 문구로 대신합니다. */
+  const VIDEO_DB_NAME = 'mijeong_video_db';
+  const VIDEO_STORE = 'videos';
+  const VIDEO_MEMORY = new Map(); // IndexedDB 없이 동작할 때의 임시 보관
+  /* 화면 영역별(수강생 / 강사) objectURL — 그 영역을 다시 그릴 때만 정리합니다 */
+  const VIDEO_URLS = { student: new Map(), admin: new Map() };
+
+  function videoDbOpen() {
+    return new Promise((resolve, reject) => {
+      if (typeof indexedDB === 'undefined' || !indexedDB) {
+        reject(new Error('no-indexeddb'));
+        return;
+      }
+      let req = null;
+      try {
+        req = indexedDB.open(VIDEO_DB_NAME, 1);
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(VIDEO_STORE)) db.createObjectStore(VIDEO_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('indexeddb-open'));
+    });
+  }
+
+  async function videoPut(id, blob) {
+    try {
+      const db = await videoDbOpen();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(VIDEO_STORE, 'readwrite');
+        tx.objectStore(VIDEO_STORE).put(blob, id);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('indexeddb-put'));
+      });
+      db.close();
+      VIDEO_MEMORY.delete(id);
+    } catch (err) {
+      VIDEO_MEMORY.set(id, blob);
+    }
+  }
+
+  async function videoGet(id) {
+    if (VIDEO_MEMORY.has(id)) return VIDEO_MEMORY.get(id);
+    try {
+      const db = await videoDbOpen();
+      const blob = await new Promise((resolve, reject) => {
+        const tx = db.transaction(VIDEO_STORE, 'readonly');
+        const req = tx.objectStore(VIDEO_STORE).get(id);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error || new Error('indexeddb-get'));
+      });
+      db.close();
+      return blob || null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function videoErase(id) {
+    VIDEO_MEMORY.delete(id);
+    Object.keys(VIDEO_URLS).forEach((scope) => {
+      const map = VIDEO_URLS[scope];
+      const url = map.get(id);
+      if (url && typeof URL !== 'undefined' && URL.revokeObjectURL) URL.revokeObjectURL(url);
+      map.delete(id);
+    });
+    try {
+      const db = await videoDbOpen();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(VIDEO_STORE, 'readwrite');
+        tx.objectStore(VIDEO_STORE).delete(id);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('indexeddb-delete'));
+      });
+      db.close();
+    } catch (err) { /* 보관하지 못한 파일은 지울 것도 없습니다 */ }
+  }
+
+  /* 다시 그리기 전에 그 영역에서 만든 objectURL을 모두 놓아 줍니다 */
+  function releaseVideoUrls(scope = 'student') {
+    const map = VIDEO_URLS[scope];
+    if (!map) return;
+    if (typeof URL !== 'undefined' && URL.revokeObjectURL) {
+      map.forEach((url) => URL.revokeObjectURL(url));
+    }
+    map.clear();
+  }
+
+  /* 화면에 그린 <video data-video-src="id">에 실제 파일을 붙입니다 */
+  async function hydrateVideos(root, scope = 'student') {
+    const map = VIDEO_URLS[scope] || VIDEO_URLS.student;
+    const nodes = $$('video[data-video-src]', root || document);
+    for (const node of nodes) {
+      const id = node.dataset.videoSrc;
+      /* 샘플 영상은 mp4 · webm 두 소스를 이미 들고 있어 브라우저가 골라 재생합니다 */
+      if (node.dataset.demoSrc) continue;
+      let src = '';
+      const blob = await videoGet(id);
+      if (blob && typeof URL !== 'undefined' && URL.createObjectURL) {
+        src = URL.createObjectURL(blob);
+        map.set(id, src);
+      }
+      if (src) {
+        node.src = src;
+      } else if (!blob) {
+        /* 파일도 없고 샘플도 아니면 재생할 것이 없습니다 */
+        const box = node.closest('[data-video-box]');
+        if (box) {
+          box.innerHTML = '<p class="cv-missing">영상 파일을 이 브라우저에서 찾지 못했어요. 새로고침 후 다시 열어 보세요.</p>';
+        }
+      }
+    }
+  }
+
+  function bytesText(size) {
+    const n = Number(size) || 0;
+    if (!n) return '';
+    if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+    return `${Math.max(1, Math.round(n / 1024))}KB`;
+  }
+
+  function videoStatusChip(status) {
+    const done = status === 'done';
+    return `<span class="cv-status${done ? ' is-done' : ' is-pending'}">${done ? '코멘트 완료' : '피드백 대기'}</span>`;
+  }
+
+  function videoPlayerHTML(video) {
+    const hasFile = !!video.fileName || !!video.demoFile;
+    const parts = [];
+    if (hasFile) {
+      const webm = video.demoFile ? video.demoFile.replace(/\.mp4$/i, '.webm') : '';
+      parts.push(`<div class="cv-player" data-video-box>
+        <video class="cv-video" controls playsinline preload="metadata"
+          data-video-src="${esc(video.id)}"${video.demoFile ? ` data-demo-src="${esc(video.demoFile)}"` : ''}
+          aria-label="${esc(video.title)} 코칭 영상">
+          ${video.demoFile ? `<source src="${esc(video.demoFile)}" type="video/mp4">\n          <source src="${esc(webm)}" type="video/webm">` : ''}
+        </video>
+      </div>`);
+    }
+    if (video.link) {
+      parts.push(`<a class="cv-link" href="${esc(video.link)}" target="_blank" rel="noopener noreferrer">
+        <span>영상 링크 열기</span>↗
+      </a>`);
+    }
+    return parts.join('');
+  }
+
+  function videoMetaText(video) {
+    const bits = [];
+    if (video.fileName) bits.push(video.fileName);
+    const size = bytesText(video.fileSize);
+    if (size) bits.push(size);
+    bits.push(fullDate(new Date(video.createdAt)));
+    return bits.join(' · ');
+  }
+
+  /* 수강생 화면 — 내 코칭 영상 목록 */
+  function videoCardsHTML(videos) {
+    if (!videos.length) {
+      return `<p class="cv-empty">아직 올린 코칭 영상이 없어요.<br>위에서 연습 영상을 올리면 선생님 코멘트와 함께 여기에 쌓입니다.</p>`;
+    }
+    return `<ul class="cv-list">${videos.map((video) => `
+      <li class="cv-card" data-video-card="${esc(video.id)}">
+        <div class="cv-card-top">
+          ${videoStatusChip(video.status)}
+          <span class="cv-week">${esc(weekKeyLabel(video.weekKey))}</span>
+        </div>
+        <b class="cv-title">${esc(video.title)}</b>
+        <p class="cv-meta">${esc(videoMetaText(video))}</p>
+        ${videoPlayerHTML(video)}
+        ${video.note ? `<p class="cv-body">${esc(video.note)}</p>` : ''}
+        <div class="cv-comment${video.comment ? ' is-done' : ''}">
+          <span class="cv-comment-label">강사 코멘트</span>
+          ${video.comment
+            ? `<p class="cv-comment-body">${esc(video.comment)}</p>
+               <span class="cv-comment-at">${video.commentAt ? `${fullDate(new Date(video.commentAt))} ${timeHM(new Date(video.commentAt))}` : ''}</span>`
+            : `<p class="cv-comment-wait">아직 코멘트가 없어요. 영상을 확인하고 피드백을 남겨 드립니다.</p>`}
+        </div>
+        <div class="cv-card-foot">
+          <button class="btn-mini btn-mini--x" type="button" data-video-del="${esc(video.id)}">${UI.videoDeleteArmed === video.id ? '한 번 더' : '삭제'}</button>
+        </div>
+      </li>`).join('')}</ul>`;
+  }
+
+  /* 핸드스탠드 온라인 코칭에만 붙는 「개인 코칭 영상 업로드」 섹션 */
+  function coachVideoHTML(program, weekKeyValue, videos) {
+    const options = weekOptions({}, weekKeyValue)
+      .map((k) => `<option value="${esc(k)}"${k === weekKeyValue ? ' selected' : ''}>${esc(weekKeyLabel(k))}</option>`)
+      .join('');
+    const waiting = videos.filter((v) => v.status !== 'done').length;
+
+    return `
+      <section class="coach-video" id="coachVideo" aria-label="개인 코칭 영상 업로드">
+        <div class="cv-head">
+          <h4>개인 코칭 영상 <span>coaching video</span></h4>
+          <span class="cv-count">${videos.length ? `내 영상 ${videos.length}개${waiting ? ` · 대기 ${waiting}` : ''}` : '아직 없음'}</span>
+        </div>
+        <p class="cv-lede">연습하는 모습을 찍어 올리면 선생님이 영상을 보고 코멘트를 남겨 드립니다. 파일이나 링크 중 하나만 있어도 등록됩니다.</p>
+
+        <form class="cv-form" id="videoForm" novalidate>
+          <div class="cv-form-row">
+            <input class="cv-input" id="videoTitle" type="text" maxlength="60"
+              placeholder="동작 이름 (예: 벽 10초 홀드 연습)" aria-label="영상 제목">
+            <select class="select" id="videoWeek" aria-label="주차 선택">${options}</select>
+          </div>
+          <textarea class="cv-input cv-textarea" id="videoNote" rows="2" maxlength="500"
+            placeholder="수강생 메모 (예: 어깨가 자꾸 꺾이는 느낌이에요)" aria-label="수강생 메모"></textarea>
+          <label class="cv-file">
+            <input id="videoFile" type="file" accept="video/*">
+            <span class="cv-file-btn">영상 파일 선택</span>
+            <span class="cv-file-name" id="videoFileName">mp4 · mov · 핸드폰 촬영 영상</span>
+          </label>
+          <input class="cv-input" id="videoLink" type="url" inputmode="url"
+            placeholder="또는 영상 링크 (유튜브 · 구글드라이브 URL)" aria-label="영상 링크">
+          <div class="cv-form-foot">
+            <span class="cv-form-hint">파일 또는 링크 중 하나만 있어도 등록됩니다.</span>
+            <button class="btn-mini btn-mini--butter" type="submit" data-video-save>영상 등록</button>
+          </div>
+        </form>
+        <p class="cv-local">시안에서는 업로드한 영상 파일이 현재 브라우저에 저장되며, 실운영 DB 연결 시 강사와 기기 간 공유됩니다.</p>
+
+        ${videoCardsHTML(videos)}
+      </section>`;
+  }
+
+  async function saveCoachingVideo() {
+    const titleEl = $('#videoTitle');
+    const weekEl = $('#videoWeek');
+    const noteEl = $('#videoNote');
+    const fileEl = $('#videoFile');
+    const linkEl = $('#videoLink');
+    const file = fileEl && fileEl.files && fileEl.files[0] ? fileEl.files[0] : null;
+    const saveBtn = $('#videoForm [data-video-save]');
+
+    if (file && file.size > 80 * 1024 * 1024) {
+      toast('영상은 한 개에 80MB까지 올릴 수 있어요. 짧게 잘라서 올려 주세요.', true);
+      return;
+    }
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      const video = await api.addVideo(UI.studentId, {
+        title: titleEl ? titleEl.value : '',
+        weekKey: weekEl ? weekEl.value : '',
+        note: noteEl ? noteEl.value : '',
+        link: linkEl ? linkEl.value : '',
+        file: file ? { name: file.name, size: file.size, type: file.type } : null,
+      });
+      if (file) await videoPut(video.id, file);
+      UI.videoDeleteArmed = null;
+      await renderOnline();
+      toast('코칭 영상을 올렸어요. 선생님 피드백을 기다려 주세요.');
+      const card = document.querySelector(`[data-video-card="${video.id}"]`);
+      if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (err) {
+      if (saveBtn) saveBtn.disabled = false;
+      toast(err.message || '코칭 영상을 올리지 못했어요.', true);
+    }
+  }
+
   async function renderOnline() {
     const panel = $('#trackPanel');
     if (!panel) return;
+    releaseVideoUrls('student');
 
     const programs = allowedPrograms();
     if (!UI.studentId || !programs.length) {
@@ -1489,6 +1758,9 @@
           </button>`).join('')}</div>`
       : `<p class="ot-single"><span class="mode is-online">온라인</span>${esc(program.name)}</p>`;
 
+    /* 핸드스탠드 온라인 코칭에만 개인 영상 업로드·코멘트 카드를 붙입니다 */
+    const videos = program.id === 'coaching' ? await api.listVideos(UI.studentId) : [];
+
     panel.innerHTML = `
       <div class="track-head">
         ${tabs}
@@ -1503,7 +1775,10 @@
         ${trackTableHTML(program, record, false)}
         ${trackNoteHTML(program, record, false)}
       </div>
+      ${program.id === 'coaching' ? coachVideoHTML(program, key, videos) : ''}
       ${noteLogHTML(records, programs)}`;
+
+    await hydrateVideos(panel, 'student');
   }
 
   function refreshTrackSummary(record) {
@@ -1602,7 +1877,38 @@
     const panel = $('#trackPanel');
     if (!panel) return;
 
+    /* 코칭 영상 등록 */
+    panel.addEventListener('submit', async (event) => {
+      const form = event.target.closest('#videoForm');
+      if (!form) return;
+      event.preventDefault();
+      await saveCoachingVideo();
+    });
+
     panel.addEventListener('click', async (event) => {
+      /* 코칭 영상 삭제 — 한 번 더 눌러 확인 */
+      const delBtn = event.target.closest('[data-video-del]');
+      if (delBtn) {
+        const id = delBtn.dataset.videoDel;
+        if (UI.videoDeleteArmed !== id) {
+          UI.videoDeleteArmed = id;
+          delBtn.textContent = '한 번 더';
+          return;
+        }
+        UI.videoDeleteArmed = null;
+        delBtn.disabled = true;
+        try {
+          await api.deleteVideo(UI.studentId, id);
+          await videoErase(id);
+          await renderOnline();
+          toast('코칭 영상을 삭제했어요.');
+        } catch (err) {
+          delBtn.disabled = false;
+          toast(err.message || '코칭 영상을 삭제하지 못했어요.', true);
+        }
+        return;
+      }
+
       const tab = event.target.closest('[data-program]');
       if (tab) {
         UI.onlineProgram = tab.dataset.program;
@@ -1662,6 +1968,23 @@
     });
 
     panel.addEventListener('change', async (event) => {
+      /* 고른 파일 이름·용량을 바로 보여 줍니다 */
+      if (event.target.id === 'videoFile') {
+        const input = event.target;
+        const label = $('#videoFileName');
+        const file = input.files && input.files[0];
+        if (label) {
+          if (file) {
+            const size = bytesText(file.size);
+            label.textContent = `${file.name}${size ? ` · ${size}` : ''}`;
+            label.classList.add('is-picked');
+          } else {
+            label.textContent = 'mp4 · mov · 핸드폰 촬영 영상';
+            label.classList.remove('is-picked');
+          }
+        }
+        return;
+      }
       if (event.target.id !== 'onlineWeek') return;
       UI.onlineWeek = event.target.value || null;
       await renderOnline();
@@ -1947,6 +2270,71 @@
       </div>`).join('');
   }
 
+  /* 강사 모드 — 코칭 영상 피드백 */
+  function adminVideoCardHTML(video) {
+    const done = video.status === 'done';
+    return `
+      <li class="cv-card cv-card--admin" data-video-card="${esc(video.id)}">
+        <div class="cv-card-top">
+          ${videoStatusChip(video.status)}
+          <span class="cv-who">${esc(video.studentName)}${video.studentCode ? ` · ${esc(video.studentCode)}` : ''}</span>
+        </div>
+        <b class="cv-title">${esc(video.title)}</b>
+        <p class="cv-meta"><span class="cv-week-inline">${esc(weekKeyLabel(video.weekKey))}</span> · ${esc(videoMetaText(video))}</p>
+        ${videoPlayerHTML(video)}
+        ${video.note ? `<p class="cv-body">${esc(video.note)}</p>` : ''}
+        <form class="cv-comment-form" data-video-comment="${esc(video.id)}">
+          <label class="cv-comment-label" for="cvComment-${esc(video.id)}">강사 코멘트</label>
+          <textarea class="cv-input cv-textarea" id="cvComment-${esc(video.id)}" rows="3" maxlength="600"
+            placeholder="영상을 보고 피드백을 적어 주세요 (예: 손목을 세우고, 벽에서 발을 띄는 연습 다음 단계)"
+            aria-label="${esc(video.studentName)} 코칭 코멘트">${esc(video.comment)}</textarea>
+          <div class="cv-form-foot">
+            <span class="cv-form-hint">${done && video.commentAt
+              ? `마지막 저장 ${fullDate(new Date(video.commentAt))} ${timeHM(new Date(video.commentAt))}`
+              : '저장하면 상태가 코멘트 완료로 바뀝니다.'}</span>
+            <button class="btn-mini btn-mini--butter" type="submit" data-video-comment-save>${done ? '코멘트 수정 저장' : '코멘트 저장'}</button>
+          </div>
+        </form>
+      </li>`;
+  }
+
+  function adminVideosHTML(videos) {
+    const list = Array.isArray(videos) ? videos : [];
+    const pending = list.filter((v) => v.status !== 'done');
+    const done = list.filter((v) => v.status === 'done');
+    const filter = UI.videoFilter || 'all';
+    const shown = filter === 'pending' ? pending : filter === 'done' ? done : list;
+    const chip = (key, label, count) => `<button class="cv-filter${filter === key ? ' is-active' : ''}" type="button"
+        data-video-filter="${key}" aria-pressed="${filter === key ? 'true' : 'false'}">${label}<span>${count}</span></button>`;
+    const filters = `<div class="cv-filters" role="group" aria-label="코칭 영상 필터">
+      ${chip('all', '전체', list.length)}${chip('pending', '피드백 대기', pending.length)}${chip('done', '코멘트 완료', done.length)}
+    </div>`;
+    if (!list.length) return `${filters}<p class="admin-empty">아직 올라온 코칭 영상이 없어요. 수강생이 영상을 올리면 여기에서 바로 볼 수 있습니다.</p>`;
+    if (!shown.length) {
+      return `${filters}<p class="admin-empty">${filter === 'pending' ? '피드백을 기다리는 영상이 없어요.' : '코멘트를 남긴 영상이 없어요.'}</p>`;
+    }
+    return `${filters}<ul class="cv-list cv-list--admin">${shown.map(adminVideoCardHTML).join('')}</ul>`;
+  }
+
+  function adminVideoBadgeHTML(pendingCount) {
+    return pendingCount
+      ? `<span class="admin-badge">피드백 대기 ${pendingCount}</span>`
+      : `<span>대기 없음</span>`;
+  }
+
+  /* 코칭 영상 블록만 다시 그립니다 (필터·코멘트 저장) */
+  async function renderAdminVideos() {
+    const box = document.querySelector('#adminBody [data-admin-video-box]');
+    if (!box) return;
+    const data = await api.adminData();
+    ADMIN_DATA = data;
+    releaseVideoUrls('admin');
+    box.innerHTML = adminVideosHTML(data.videos);
+    const badge = document.querySelector('#adminBody [data-video-badge]');
+    if (badge) badge.innerHTML = adminVideoBadgeHTML(data.videoPending);
+    await hydrateVideos(box, 'admin');
+  }
+
   /* 수강권 선택지 — 그 수업으로 살 수 있는 종류만 */
   function passOptionList(selected, options) {
     const opts = options || {};
@@ -2149,6 +2537,11 @@
         ${requests}
       </section>
 
+      <section class="admin-block" id="adminVideos">
+        <div class="admin-h"><h4>코칭 영상 피드백 / video</h4><span data-video-badge>${adminVideoBadgeHTML(data.videoPending)}</span></div>
+        <div data-admin-video-box>${adminVideosHTML(data.videos)}</div>
+      </section>
+
       <section class="admin-block">
         <div class="admin-h"><h4>공지사항 / notice</h4><span>${data.notices.length}건</span></div>
         ${adminNoticesHTML(data.notices)}
@@ -2208,6 +2601,9 @@
         <p>데모 데이터는 이 브라우저에 저장됩니다.</p>
         <button class="text-btn" type="button" data-reset>데모 초기화</button>
       </div>`;
+
+    releaseVideoUrls('admin');
+    await hydrateVideos(body.querySelector('[data-admin-video-box]') || body, 'admin');
   }
 
   function bindAdmin() {
@@ -2291,6 +2687,25 @@
       }
     });
 
+    /* 코칭 영상 코멘트 저장 (다시 저장하면 수정) */
+    body.addEventListener('submit', async (event) => {
+      const form = event.target.closest('[data-video-comment]');
+      if (!form) return;
+      event.preventDefault();
+      const area = form.querySelector('textarea');
+      const btn = form.querySelector('[data-video-comment-save]');
+      if (btn) btn.disabled = true;
+      try {
+        await api.addVideoComment(form.dataset.videoComment, area ? area.value : '');
+        await renderAdminVideos();
+        await renderOnline();
+        toast('코멘트를 저장했어요. 수강생 화면에도 바로 보입니다.');
+      } catch (err) {
+        if (btn) btn.disabled = false;
+        toast(err.message || '코멘트를 저장하지 못했어요.', true);
+      }
+    });
+
     /* 공지 등록 · 수정 저장 */
     body.addEventListener('submit', async (event) => {
       const form = event.target.closest('#noticeForm');
@@ -2322,6 +2737,14 @@
     });
 
     body.addEventListener('click', async (event) => {
+      /* 코칭 영상 필터 */
+      const filterBtn = event.target.closest('[data-video-filter]');
+      if (filterBtn) {
+        UI.videoFilter = filterBtn.dataset.videoFilter || 'all';
+        await renderAdminVideos();
+        return;
+      }
+
       const bookBtn = event.target.closest('[data-admin-book]');
       if (bookBtn) {
         const studentId = ($('#bookStudent') || {}).value;
@@ -2516,6 +2939,8 @@
       adminModal.addEventListener('click', (event) => {
         if (event.target.closest('[data-close-admin]') || event.target === adminModal) adminModal.close();
       });
+      /* 닫을 때는 강사 화면에서 만든 영상 URL을 놓아 둡니다 */
+      adminModal.addEventListener('close', () => releaseVideoUrls('admin'));
     }
 
     document.addEventListener('click', (event) => {
