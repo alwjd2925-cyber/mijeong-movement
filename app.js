@@ -71,8 +71,6 @@
     noticeDeleteArmed: null, // 삭제를 한 번 눌러 확인을 기다리는 공지 id
     videoDeleteArmed: null, // 삭제를 한 번 눌러 확인을 기다리는 코칭 영상 id
     videoFilter: 'all',     // 강사 모드 코칭 영상 필터 (all | pending | done)
-    coachFilter: 'all',     // 강사 모드 코칭 노트 필터 (all | pending | done)
-    coachDeleteArmed: null, // 코칭 노트 코멘트 삭제를 한 번 눌러 확인 기다리는 키
   };
 
   /* ── 수업별 접근 제어 ──────────────────────────────────── */
@@ -1729,9 +1727,10 @@
     return `마지막 저장 ${shortDate(d)} ${timeHM(d)}`;
   }
 
+  /* 주간 노트 — 모닝 모빌리티(hasNotes)에서만 그립니다 */
   function trackNoteHTML(program, record, locked) {
     const note = (record && record.note) || '';
-    const card = `
+    return `
       <div class="track-note">
         <p class="tn-label">${esc(program.noteLabel)}</p>
         <p class="tn-hint">${esc(program.noteHint)}</p>
@@ -1741,33 +1740,6 @@
           <button class="btn-mini btn-mini--butter" type="button" data-save-note${locked ? ' disabled' : ''}>노트 저장</button>
         </div>
       </div>`;
-    /* 핸드스탠드 온라인 코칭에만 노트 아래로 강사 코멘트 편지가 붙습니다 */
-    return card + (program.id === 'coaching' ? coachLetterHTML(record) : '');
-  }
-
-  /* 수강생 화면 — COACHING NOTE 아래의 강사 코멘트 (편지처럼) */
-  function coachLetterHTML(record) {
-    const comment = String((record && record.coachComment) || '');
-    const at = record && record.coachCommentAt ? new Date(record.coachCommentAt) : null;
-    const head = `
-        <header class="cn-head">
-          <span class="cn-from">FROM INSTRUCTOR <i>·</i> 강사 코멘트</span>
-          ${at ? `<time class="cn-date" datetime="${esc(at.toISOString())}">${fullDate(at)} ${timeHM(at)}</time>` : ''}
-        </header>
-        <div class="cn-rule" aria-hidden="true"></div>`;
-
-    if (!comment.trim()) {
-      return `
-      <article class="coach-note is-waiting" id="coachNote" aria-label="강사 코멘트">${head}
-        <p class="cn-wait">아직 강사 코멘트가 없어요.<span>노트를 저장하면 선생님이 읽고 피드백을 남겨 드립니다.</span></p>
-      </article>`;
-    }
-
-    return `
-      <article class="coach-note" id="coachNote" aria-label="강사 코멘트">${head}
-        <p class="cn-body">${esc(comment)}</p>
-        <p class="cn-sign">— 미정</p>
-      </article>`;
   }
 
   /* ── 코칭 영상 파일 보관 (IndexedDB) ─────────────────────────
@@ -1900,7 +1872,26 @@
 
   function videoStatusChip(status) {
     const done = status === 'done';
-    return `<span class="cv-status${done ? ' is-done' : ' is-pending'}">${done ? '코멘트 완료' : '피드백 대기'}</span>`;
+    return `<span class="cv-status${done ? ' is-done' : ' is-pending'}">${done ? '피드백 완료' : '피드백 대기'}</span>`;
+  }
+
+  /* 수강생 영상 카드 아래 — 강사 피드백을 편지처럼 */
+  function videoLetterHTML(video) {
+    const comment = String(video.comment || '');
+    if (!comment.trim()) {
+      return '<p class="cv-letter-wait">아직 피드백이 없어요. 선생님이 영상을 확인하고 피드백을 남겨 드립니다.</p>';
+    }
+    const at = video.commentAt ? new Date(video.commentAt) : null;
+    return `
+        <article class="cv-letter" aria-label="강사 피드백">
+          <header class="cn-head">
+            <span class="cn-from">FROM INSTRUCTOR <i>·</i> 강사 피드백</span>
+            ${at ? `<time class="cn-date" datetime="${esc(at.toISOString())}">${fullDate(at)} ${timeHM(at)}</time>` : ''}
+          </header>
+          <div class="cn-rule" aria-hidden="true"></div>
+          <p class="cn-body">${esc(comment)}</p>
+          <p class="cn-sign">— 미정</p>
+        </article>`;
   }
 
   function videoPlayerHTML(video) {
@@ -1936,7 +1927,7 @@
   /* 수강생 화면 — 내 코칭 영상 목록 */
   function videoCardsHTML(videos) {
     if (!videos.length) {
-      return `<p class="cv-empty">아직 올린 코칭 영상이 없어요.<br>위에서 연습 영상을 올리면 선생님 코멘트와 함께 여기에 쌓입니다.</p>`;
+      return `<p class="cv-empty">아직 올린 코칭 영상이 없어요.<br>위에서 연습 영상을 올리면 선생님 피드백과 함께 여기에 쌓입니다.</p>`;
     }
     return `<ul class="cv-list">${videos.map((video) => `
       <li class="cv-card" data-video-card="${esc(video.id)}">
@@ -1947,14 +1938,11 @@
         <b class="cv-title">${esc(video.title)}</b>
         <p class="cv-meta">${esc(videoMetaText(video))}</p>
         ${videoPlayerHTML(video)}
-        ${video.note ? `<p class="cv-body">${esc(video.note)}</p>` : ''}
-        <div class="cv-comment${video.comment ? ' is-done' : ''}">
-          <span class="cv-comment-label">강사 코멘트</span>
-          ${video.comment
-            ? `<p class="cv-comment-body">${esc(video.comment)}</p>
-               <span class="cv-comment-at">${video.commentAt ? `${fullDate(new Date(video.commentAt))} ${timeHM(new Date(video.commentAt))}` : ''}</span>`
-            : `<p class="cv-comment-wait">아직 코멘트가 없어요. 영상을 확인하고 피드백을 남겨 드립니다.</p>`}
-        </div>
+        ${video.note ? `<div class="cv-quote">
+          <span class="cv-quote-label">내 코멘트</span>
+          <p class="cv-body">${esc(video.note)}</p>
+        </div>` : ''}
+        ${videoLetterHTML(video)}
         <div class="cv-card-foot">
           <button class="btn-mini btn-mini--x" type="button" data-video-del="${esc(video.id)}">${UI.videoDeleteArmed === video.id ? '한 번 더' : '삭제'}</button>
         </div>
@@ -1974,7 +1962,7 @@
           <h4>개인 코칭 영상 <span>coaching video</span></h4>
           <span class="cv-count">${videos.length ? `내 영상 ${videos.length}개${waiting ? ` · 대기 ${waiting}` : ''}` : '아직 없음'}</span>
         </div>
-        <p class="cv-lede">연습하는 모습을 찍어 올리면 선생님이 영상을 보고 코멘트를 남겨 드립니다. 파일이나 링크 중 하나만 있어도 등록됩니다.</p>
+        <p class="cv-lede">연습하는 모습을 찍어 올리면 선생님이 영상을 보고 피드백을 남겨 드립니다. 파일이나 링크 중 하나만 있어도 등록됩니다.</p>
 
         <form class="cv-form" id="videoForm" novalidate>
           <div class="cv-form-row">
@@ -1982,8 +1970,11 @@
               placeholder="동작 이름 (예: 벽 10초 홀드 연습)" aria-label="영상 제목">
             <select class="select" id="videoWeek" aria-label="주차 선택">${options}</select>
           </div>
-          <textarea class="cv-input cv-textarea" id="videoNote" rows="2" maxlength="500"
-            placeholder="수강생 메모 (예: 어깨가 자꾸 꺾이는 느낌이에요)" aria-label="수강생 메모"></textarea>
+          <div class="cv-note-field">
+            <label class="cv-note-label" for="videoNote">내 코멘트 <span>· 피드백받고 싶은 점을 적어 보세요</span></label>
+            <textarea class="cv-input cv-textarea" id="videoNote" rows="3" maxlength="500"
+              placeholder="예: 어깨가 자꾸 꺾이는 느낌이에요. 이 부분을 봐 주세요." aria-label="내 코멘트"></textarea>
+          </div>
           <label class="cv-file">
             <input id="videoFile" type="file" accept="video/*">
             <span class="cv-file-btn">영상 파일 선택</span>
@@ -2084,7 +2075,7 @@
           </button>`).join('')}</div>`
       : `<p class="ot-single"><span class="mode is-online">온라인</span>${esc(program.name)}</p>`;
 
-    /* 핸드스탠드 온라인 코칭에만 개인 영상 업로드·코멘트 카드를 붙입니다 */
+    /* 핸드스탠드 온라인 코칭에만 개인 영상 업로드·피드백 카드를 붙입니다 */
     const videos = program.id === 'coaching' ? await api.listVideos(UI.studentId) : [];
 
     panel.innerHTML = `
@@ -2097,12 +2088,12 @@
       <p class="track-sub">${esc(program.sub)}</p>
       <p class="track-sum"><b>${checked}</b> / ${total} 동작 · 이 주 ${count}회 체크 · <span class="track-who">${esc(student.name)}</span></p>
       ${trackCalHTML(program, records)}
-      <div class="track-body">
+      <div class="track-body${program.hasNotes ? '' : ' is-single'}">
         ${trackTableHTML(program, record, false)}
-        ${trackNoteHTML(program, record, false)}
+        ${program.hasNotes ? trackNoteHTML(program, record, false) : ''}
       </div>
       ${program.id === 'coaching' ? coachVideoHTML(program, key, videos) : ''}
-      ${noteLogHTML(records, programs)}`;
+      ${program.hasNotes ? noteLogHTML(records, programs) : ''}`;
 
     await hydrateVideos(panel, 'student');
   }
@@ -2120,6 +2111,7 @@
   function noteEntries(records, programs) {
     const out = [];
     programs.forEach((program) => {
+      if (!program.hasNotes) return;
       const bucket = (records && records[program.id]) || {};
       Object.keys(bucket).forEach((weekKey) => {
         const rec = bucket[weekKey] || {};
@@ -2130,8 +2122,6 @@
           weekKey,
           note,
           counts: onlineCounts(program, rec),
-          comment: String(rec.coachComment || ''),
-          commentAt: rec.coachCommentAt || null,
         });
       });
     });
@@ -2139,18 +2129,6 @@
       if (a.weekKey !== b.weekKey) return a.weekKey < b.weekKey ? 1 : -1;
       return a.program.id.localeCompare(b.program.id);
     });
-  }
-
-  /* 내 노트 기록 — 코칭 주차 카드 아래에 이어지는 강사 코멘트(댓글) */
-  function coachReplyHTML(entry) {
-    const comment = String(entry.comment || '');
-    if (!comment.trim()) return '<p class="nc-wait">강사 코멘트 대기</p>';
-    const at = entry.commentAt ? new Date(entry.commentAt) : null;
-    return `
-      <div class="nc-letter">
-        <p class="nc-letter-head">FROM INSTRUCTOR · 강사 코멘트${at ? `<span class="nc-letter-date">${fullDate(at)}</span>` : ''}</p>
-        <p class="nc-letter-body">${esc(comment)}</p>
-      </div>`;
   }
 
   function noteLogHTML(records, programs) {
@@ -2187,7 +2165,6 @@
                 <span class="nc-sum">${entry.counts.checked}/${entry.counts.total} 동작 · ${entry.counts.count}회 체크</span>
                 <span class="nc-body">${esc(entry.note)}</span>
               </button>
-              ${entry.program.id === 'coaching' ? coachReplyHTML(entry) : ''}
             </li>`).join('')}
         </ul>
       </section>`;
@@ -2612,7 +2589,7 @@
           <div class="on-item">
             <span class="on-prog">${esc(it.programName)}</span>
             <span class="on-count">${it.checked}/${it.total} 동작 · ${it.count}회</span>
-            <p class="on-note${it.note ? '' : ' is-empty'}">${it.note ? esc(it.note) : '노트 없음'}</p>
+            ${it.hasNotes ? `<p class="on-note${it.note ? '' : ' is-empty'}">${it.note ? esc(it.note) : '노트 없음'}</p>` : ''}
           </div>`).join('')}
       </div>`).join('');
   }
@@ -2629,17 +2606,20 @@
         <b class="cv-title">${esc(video.title)}</b>
         <p class="cv-meta"><span class="cv-week-inline">${esc(weekKeyLabel(video.weekKey))}</span> · ${esc(videoMetaText(video))}</p>
         ${videoPlayerHTML(video)}
-        ${video.note ? `<p class="cv-body">${esc(video.note)}</p>` : ''}
+        ${video.note ? `<div class="cv-quote">
+          <span class="cv-quote-label">수강생 코멘트</span>
+          <p class="cv-body">${esc(video.note)}</p>
+        </div>` : ''}
         <form class="cv-comment-form" data-video-comment="${esc(video.id)}">
-          <label class="cv-comment-label" for="cvComment-${esc(video.id)}">강사 코멘트</label>
-          <textarea class="cv-input cv-textarea" id="cvComment-${esc(video.id)}" rows="3" maxlength="600"
+          <label class="cv-comment-label" for="cvComment-${esc(video.id)}">강사 피드백</label>
+          <textarea class="cv-input cv-textarea cv-comment-area" id="cvComment-${esc(video.id)}" rows="8" maxlength="2000"
             placeholder="영상을 보고 피드백을 적어 주세요 (예: 손목을 세우고, 벽에서 발을 띄는 연습 다음 단계)"
-            aria-label="${esc(video.studentName)} 코칭 코멘트">${esc(video.comment)}</textarea>
+            aria-label="${esc(video.studentName)} 코칭 영상 피드백">${esc(video.comment)}</textarea>
           <div class="cv-form-foot">
             <span class="cv-form-hint">${done && video.commentAt
               ? `마지막 저장 ${fullDate(new Date(video.commentAt))} ${timeHM(new Date(video.commentAt))}`
-              : '저장하면 상태가 코멘트 완료로 바뀝니다.'}</span>
-            <button class="btn-mini btn-mini--butter" type="submit" data-video-comment-save>${done ? '코멘트 수정 저장' : '코멘트 저장'}</button>
+              : '저장하면 상태가 피드백 완료로 바뀝니다.'}</span>
+            <button class="btn-mini btn-mini--butter" type="submit" data-video-comment-save>${done ? '피드백 수정 저장' : '피드백 저장'}</button>
           </div>
         </form>
       </li>`;
@@ -2654,11 +2634,11 @@
     const chip = (key, label, count) => `<button class="cv-filter${filter === key ? ' is-active' : ''}" type="button"
         data-video-filter="${key}" aria-pressed="${filter === key ? 'true' : 'false'}">${label}<span>${count}</span></button>`;
     const filters = `<div class="cv-filters" role="group" aria-label="코칭 영상 필터">
-      ${chip('all', '전체', list.length)}${chip('pending', '피드백 대기', pending.length)}${chip('done', '코멘트 완료', done.length)}
+      ${chip('all', '전체', list.length)}${chip('pending', '피드백 대기', pending.length)}${chip('done', '피드백 완료', done.length)}
     </div>`;
     if (!list.length) return `${filters}<p class="admin-empty">아직 올라온 코칭 영상이 없어요. 수강생이 영상을 올리면 여기에서 바로 볼 수 있습니다.</p>`;
     if (!shown.length) {
-      return `${filters}<p class="admin-empty">${filter === 'pending' ? '피드백을 기다리는 영상이 없어요.' : '코멘트를 남긴 영상이 없어요.'}</p>`;
+      return `${filters}<p class="admin-empty">${filter === 'pending' ? '피드백을 기다리는 영상이 없어요.' : '피드백을 남긴 영상이 없어요.'}</p>`;
     }
     return `${filters}<ul class="cv-list cv-list--admin">${shown.map(adminVideoCardHTML).join('')}</ul>`;
   }
@@ -2669,7 +2649,7 @@
       : `<span>대기 없음</span>`;
   }
 
-  /* 코칭 영상 블록만 다시 그립니다 (필터·코멘트 저장) */
+  /* 코칭 영상 블록만 다시 그립니다 (필터·피드백 저장) */
   async function renderAdminVideos() {
     const box = document.querySelector('#adminBody [data-admin-video-box]');
     if (!box) return;
@@ -2680,80 +2660,6 @@
     const badge = document.querySelector('#adminBody [data-video-badge]');
     if (badge) badge.innerHTML = adminVideoBadgeHTML(data.videoPending);
     await hydrateVideos(box, 'admin');
-  }
-
-  /* ── 강사 모드 — 코칭 노트 피드백 ────────────────────────
-     수강생이 주차별 COACHING NOTE에 적은 내용을 모아 보고,
-     그 아래 넉넉한 입력란에 강사가 긴 코멘트를 써서 저장합니다. */
-  function adminCoachCardHTML(row) {
-    const key = `${row.studentId}|${row.weekKey}`;
-    const done = !!String(row.comment || '').trim();
-    const at = row.commentAt ? new Date(row.commentAt) : null;
-    const id = `coachArea-${row.studentId}-${row.weekKey}`;
-    return `
-      <li class="coach-admin-card" data-coach-card="${esc(key)}">
-        <div class="cac-top">
-          <span class="cv-who">${esc(row.studentName)}${row.studentCode ? ` · ${esc(row.studentCode)}` : ''}</span>
-          <span class="cac-week">${esc(weekKeyLabel(row.weekKey))}</span>
-        </div>
-        <p class="cac-meta">${row.checked}/${row.total} 동작 · ${row.count}회 체크${row.noteAt ? ` · 노트 ${fullDate(new Date(row.noteAt))}` : ''}</p>
-        <div class="cac-note">
-          <span class="cac-label">COACHING NOTE</span>
-          <p class="cac-note-body">${esc(row.note)}</p>
-        </div>
-        <form class="cac-form" data-coach-comment="${esc(key)}">
-          <label class="cv-comment-label" for="${esc(id)}">강사 코멘트</label>
-          <textarea class="cv-input cv-textarea cac-area" id="${esc(id)}" rows="8" maxlength="2000"
-            placeholder="노트를 읽고 다음 주에 무엇을 해 볼지 길게 적어 주세요 (예: 이번 주는 손목 들기를 먼저, 벽 홀드는 15초 × 4세트부터)"
-            aria-label="${esc(row.studentName)} 코칭 노트 코멘트">${esc(row.comment)}</textarea>
-          <div class="cv-form-foot">
-            <span class="cv-form-hint">${done && at
-              ? `마지막 저장 ${fullDate(at)} ${timeHM(at)}`
-              : '저장하면 수강생 노트 아래에 편지처럼 붙습니다.'}</span>
-            <span class="cac-btns">
-              <button class="btn-mini btn-mini--butter" type="submit" data-coach-save>${done ? '코멘트 수정 저장' : '코멘트 저장'}</button>
-              ${done ? `<button class="btn-mini btn-mini--x" type="button" data-coach-del="${esc(key)}">${UI.coachDeleteArmed === key ? '한 번 더' : '삭제'}</button>` : ''}
-            </span>
-          </div>
-        </form>
-      </li>`;
-  }
-
-  function adminCoachNotesHTML(rows) {
-    const list = Array.isArray(rows) ? rows : [];
-    const pending = list.filter((r) => !String(r.comment || '').trim());
-    const done = list.filter((r) => !!String(r.comment || '').trim());
-    const filter = UI.coachFilter || 'all';
-    const shown = filter === 'pending' ? pending : filter === 'done' ? done : list;
-    const chip = (key, label, count) => `<button class="cv-filter${filter === key ? ' is-active' : ''}" type="button"
-        data-coach-filter="${key}" aria-pressed="${filter === key ? 'true' : 'false'}">${label}<span>${count}</span></button>`;
-    const filters = `<div class="cv-filters" role="group" aria-label="코칭 노트 필터">
-      ${chip('all', '전체', list.length)}${chip('pending', '코멘트 대기', pending.length)}${chip('done', '코멘트 완료', done.length)}
-    </div>`;
-    if (!list.length) {
-      return `${filters}<p class="admin-empty">아직 코칭 노트가 없어요. 수강생이 주간 노트를 저장하면 여기에 모입니다.</p>`;
-    }
-    if (!shown.length) {
-      return `${filters}<p class="admin-empty">${filter === 'pending' ? '코멘트를 기다리는 노트가 없어요.' : '코멘트를 남긴 노트가 없어요.'}</p>`;
-    }
-    return `${filters}<ul class="coach-admin-list">${shown.map(adminCoachCardHTML).join('')}</ul>`;
-  }
-
-  function adminCoachBadgeHTML(pendingCount) {
-    return pendingCount
-      ? `<span class="admin-badge">코멘트 대기 ${pendingCount}</span>`
-      : `<span>대기 없음</span>`;
-  }
-
-  /* 코칭 노트 블록만 다시 그립니다 (필터·코멘트 저장·삭제) */
-  async function renderAdminCoachNotes() {
-    const box = document.querySelector('#adminBody [data-admin-coach-box]');
-    if (!box) return;
-    const data = await api.adminData();
-    ADMIN_DATA = data;
-    box.innerHTML = adminCoachNotesHTML(data.coachNotes);
-    const badge = document.querySelector('#adminBody [data-coach-badge]');
-    if (badge) badge.innerHTML = adminCoachBadgeHTML(data.coachPending);
   }
 
   /* 수강권 선택지 — 그 수업으로 살 수 있는 종류만 */
@@ -2999,12 +2905,6 @@
         <div data-admin-video-box>${adminVideosHTML(data.videos)}</div>
       </section>
 
-      <section class="admin-block" id="adminCoachNotes">
-        <div class="admin-h"><h4>코칭 노트 피드백 / note</h4><span data-coach-badge>${adminCoachBadgeHTML(data.coachPending)}</span></div>
-        <p class="grant-hint">수강생이 주간 COACHING NOTE에 적은 내용입니다. 저장한 코멘트는 그 수강생의 노트 아래에 편지처럼 바로 보입니다.</p>
-        <div data-admin-coach-box>${adminCoachNotesHTML(data.coachNotes)}</div>
-      </section>
-
       <section class="admin-block">
         <div class="admin-h"><h4>공지사항 / notice</h4><span>${data.notices.length}건</span></div>
         ${adminNoticesHTML(data.notices)}
@@ -3084,7 +2984,6 @@
         UI.resetArmed = false;
         UI.noticeEditing = null;
         UI.noticeDeleteArmed = null;
-        UI.coachDeleteArmed = null;
         await renderAdmin();
         modal.showModal();
       });
@@ -3156,7 +3055,7 @@
       }
     });
 
-    /* 코칭 영상 코멘트 저장 (다시 저장하면 수정) */
+    /* 코칭 영상 피드백 저장 (다시 저장하면 수정) */
     body.addEventListener('submit', async (event) => {
       const payForm = event.target.closest('#payAccountForm');
       if (payForm) {
@@ -3181,28 +3080,6 @@
         return;
       }
 
-      /* 코칭 노트 강사 코멘트 저장 (다시 저장하면 수정) */
-      const coachForm = event.target.closest('[data-coach-comment]');
-      if (coachForm) {
-        event.preventDefault();
-        const key = coachForm.dataset.coachComment || '';
-        const [studentId, weekKeyValue] = key.split('|');
-        const area = coachForm.querySelector('textarea');
-        const btn = coachForm.querySelector('[data-coach-save]');
-        if (btn) btn.disabled = true;
-        try {
-          await api.setCoachComment(studentId, 'coaching', weekKeyValue, area ? area.value : '');
-          UI.coachDeleteArmed = null;
-          await renderAdminCoachNotes();
-          await renderOnline();
-          toast('코칭 노트 코멘트를 저장했어요. 수강생 화면에도 바로 보입니다.');
-        } catch (err) {
-          if (btn) btn.disabled = false;
-          toast(err.message || '코멘트를 저장하지 못했어요.', true);
-        }
-        return;
-      }
-
       const form = event.target.closest('[data-video-comment]');
       if (!form) return;
       event.preventDefault();
@@ -3213,10 +3090,10 @@
         await api.addVideoComment(form.dataset.videoComment, area ? area.value : '');
         await renderAdminVideos();
         await renderOnline();
-        toast('코멘트를 저장했어요. 수강생 화면에도 바로 보입니다.');
+        toast('피드백을 저장했어요. 수강생 화면에도 바로 보입니다.');
       } catch (err) {
         if (btn) btn.disabled = false;
-        toast(err.message || '코멘트를 저장하지 못했어요.', true);
+        toast(err.message || '피드백을 저장하지 못했어요.', true);
       }
     });
 
@@ -3251,38 +3128,6 @@
     });
 
     body.addEventListener('click', async (event) => {
-      /* 코칭 노트 필터 */
-      const coachFilterBtn = event.target.closest('[data-coach-filter]');
-      if (coachFilterBtn) {
-        UI.coachFilter = coachFilterBtn.dataset.coachFilter || 'all';
-        await renderAdminCoachNotes();
-        return;
-      }
-
-      /* 코칭 노트 코멘트 삭제 — 한 번 더 눌러 확인 */
-      const coachDelBtn = event.target.closest('[data-coach-del]');
-      if (coachDelBtn) {
-        const key = coachDelBtn.dataset.coachDel || '';
-        if (UI.coachDeleteArmed !== key) {
-          UI.coachDeleteArmed = key;
-          coachDelBtn.textContent = '한 번 더';
-          return;
-        }
-        const [studentId, weekKeyValue] = key.split('|');
-        UI.coachDeleteArmed = null;
-        coachDelBtn.disabled = true;
-        try {
-          await api.deleteCoachComment(studentId, 'coaching', weekKeyValue);
-          await renderAdminCoachNotes();
-          await renderOnline();
-          toast('코칭 노트 코멘트를 삭제했어요. 수강생 노트는 그대로입니다.');
-        } catch (err) {
-          coachDelBtn.disabled = false;
-          toast(err.message || '코멘트를 삭제하지 못했어요.', true);
-        }
-        return;
-      }
-
       /* 코칭 영상 필터 */
       const filterBtn = event.target.closest('[data-video-filter]');
       if (filterBtn) {
