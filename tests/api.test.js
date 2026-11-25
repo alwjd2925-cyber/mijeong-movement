@@ -998,6 +998,119 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     eq('빈 목록은 다시 채우지 않음', await emptyReload.api.listVideos('st_coaching'), []);
   }
 
+  /* ────────────────────────────────────────────────────────
+     18. 결제 방식 — 계좌이체 · 카드·간편결제
+     ──────────────────────────────────────────────────────── */
+  console.log('\n[18] 결제 방식');
+  {
+    /* 18-1. 기본 입금 계좌 · 강사 저장 */
+    {
+      const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
+      eq('기본 계좌 — 신한', (await api.payAccount()).bank, '신한');
+      eq('기본 계좌 — 번호', (await api.payAccount()).number, '110612001771');
+      eq('기본 계좌 — 예금주', (await api.payAccount()).holder, '김*정');
+      eq('송금 링크는 비어 있음', (await api.payAccount()).link, '');
+
+      const saved = await api.setPayAccount({ bank: '국민', number: '123-456-789012', holder: '김미정', link: 'https://toss.me/mijeong' });
+      eq('저장된 계좌', [saved.bank, saved.number, saved.holder], ['국민', '123-456-789012', '김미정']);
+      eq('저장 후 다시 읽어도 같음', (await api.payAccount()).link, 'https://toss.me/mijeong');
+      eq('저장소에 남음', read().settings.payAccount.number, '123-456-789012');
+
+      await throws('은행명 없이는 저장 불가', () => api.setPayAccount({ bank: ' ', number: '110612001771', holder: '김*정' }), /은행명/);
+      await throws('계좌번호가 짧으면 거부', () => api.setPayAccount({ bank: '신한', number: '12', holder: '김*정' }), /계좌번호/);
+      await throws('예금주 없이는 저장 불가', () => api.setPayAccount({ bank: '신한', number: '110612001771', holder: '' }), /예금주/);
+      await throws('송금 링크 형식 검사', () => api.setPayAccount({ bank: '신한', number: '110612001771', holder: '김*정', link: 'toss.me' }), /송금 링크/);
+    }
+
+    /* 18-2. 계좌이체 신청 → 입금 확인 대기 → 강사 승인 */
+    {
+      const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
+      const asked = await api.request('st_new', 'register', ['handstand'], {
+        passTypes: { handstand: 4 },
+        pay: { method: 'transfer', depositor: '김하늘' },
+      });
+      eq('신청은 확인 중', asked.status, 'pending');
+      eq('결제 방식 계좌이체', asked.pending.pay.method, 'transfer');
+      eq('입금자명 유지', asked.pending.pay.depositor, '김하늘');
+      eq('입금 확인 대기 상태', asked.pending.pay.status, 'awaiting_deposit');
+      eq('금액은 4회권 180,000원', asked.pending.pay.amount, 180000);
+
+      const data = await api.adminData();
+      eq('강사 요청에 결제 정보', data.pending[0].pay.method, 'transfer');
+      eq('강사 요청에 입금자명', data.pending[0].pay.depositor, '김하늘');
+      eq('강사 수강생 목록에도 결제 배지', data.students.find((s) => s.id === 'st_new').pay.depositor, '김하늘');
+      eq('결제 내역은 아직 비어 있음', data.payments.length, 0);
+
+      const approved = await api.approveRequest(data.pending[0].id, { handstand: 4 });
+      eq('승인하면 수강권 열림', approved.status, 'active');
+      eq('승인하면 수강권 4회', approved.passes.handstand.total, 4);
+
+      const pays = await api.listPayments('st_new');
+      eq('계좌이체 결제가 기록됨', pays.length, 1);
+      eq('결제 방식 transfer', pays[0].method, 'transfer');
+      eq('입금자명 기록', pays[0].depositor, '김하늘');
+      eq('기록된 금액', pays[0].amount, 180000);
+      eq('입금 확인 라벨', pays[0].label, '계좌이체 · 입금 확인');
+      eq('신청서도 결제 완료', read().requests[0].pay.status, 'paid');
+    }
+
+    /* 18-3. 카드·간편결제 — 결제하면 바로 개시 · 결제 내역 */
+    {
+      const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
+      const v = await api.request('st_new', 'register', ['handstand'], {
+        passTypes: { handstand: 8 },
+        pay: { method: 'card', provider: 'kakaopay' },
+      });
+      eq('카드결제는 바로 사용 중', v.status, 'active');
+      eq('수강권이 바로 열림', v.passes.handstand.total, 8);
+      eq('신청서는 승인 처리', read().requests[0].status, 'approved');
+      eq('신청서 결제 상태 paid', read().requests[0].pay.status, 'paid');
+      eq('결제 수단 기록', v.payments[0].provider, 'kakaopay');
+      eq('카드결제 라벨', v.payments[0].label, '카드결제 · 카카오페이');
+      eq('결제 금액 300,000원', v.payments[0].amount, 300000);
+      eq('시안 결제로 표시', v.payments[0].demo, true);
+
+      const data = await api.adminData();
+      eq('강사 결제 내역에 남음', data.payments[0].studentName, '김하늘');
+      eq('강사 목록 결제 배지 카드결제', data.students.find((s) => s.id === 'st_new').pay.method, 'card');
+      eq('대기 요청은 없음', data.pending.length, 0);
+    }
+
+    /* 18-4. 입금자명 기본값 · 길이 제한 · 예전 신청서 호환 */
+    {
+      const { api } = makeContext({ now: NOW, state: baseState(NOW) });
+      const v = await api.request('st_new', 'register', ['morning'], { pay: { method: 'transfer' } });
+      eq('입금자명을 비우면 신청자 이름', v.pending.pay.depositor, '김하늘');
+      eq('온라인 수업 금액 59,000원', v.pending.pay.amount, 59000);
+
+      const again = makeContext({ now: NOW, state: {
+        version: 3,
+        students: baseStudents(NOW),
+        requests: [{ id: 'rq_old', studentId: 'st_new', type: 'register', classes: ['functional'], passTypes: { functional: 4 }, status: 'pending', createdAt: new Date(NOW).toISOString() }],
+        bookings: [],
+      } });
+      const old = await again.api.getStudent('st_new');
+      eq('예전 신청서는 계좌이체로 읽힘', old.pending.pay.method, 'transfer');
+      eq('예전 신청서 입금자명은 이름', old.pending.pay.depositor, '김하늘');
+      eq('예전 신청서 금액 계산', old.pending.pay.amount, 120000);
+      eq('예전 데이터에 기본 계좌가 채워짐', (await again.api.payAccount()).number, '110612001771');
+
+      await throws('입금자명 20자 초과는 거부', () => again.api.request('st_only_morn', 'register', ['morning'], {
+        pay: { method: 'transfer', depositor: '가'.repeat(21) },
+      }), /입금자명/);
+    }
+
+    /* 18-5. 결제 없이 온라인만 신청해도 기본은 계좌이체 */
+    {
+      const { api } = makeContext({ now: NOW, state: baseState(NOW) });
+      const v = await api.request('st_only_morn', 'register', ['coaching'], { pay: { method: 'card', provider: 'tosspay' } });
+      eq('코칭 카드결제 — 결제 기록 남음', v.payments.length, 1);
+      eq('코칭 결제 금액', v.payments[0].amount, 300000);
+      eq('토스페이 기록', v.payments[0].provider, 'tosspay');
+      eq('온라인 수업이 열림', v.access.online.indexOf('coaching') !== -1, true);
+    }
+  }
+
   /* ── 결과 ─────────────────────────────────────────────── */
   console.log(`\n${failures.length ? '✗ 실패' : '✓ 통과'} — ${passed}개 확인, ${failures.length}개 실패`);
   if (failures.length) {

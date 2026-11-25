@@ -61,6 +61,11 @@
     regPasses: {},      // 폼에서 고른 수업별 수강권 { handstand: '8', functional: '1' }
     regLivePasses: {},  // 그 수강생이 이미 가진 수강권 (수업별)
     regWarn: false,     // 0개 선택 안내 표시
+    regPay: 'transfer',  // 결제 방식 (transfer | card)
+    regProvider: 'card', // 카드·간편결제 수단 (card | kakaopay | tosspay)
+    regDepositor: '',   // 입금자명 (비우면 신청자 이름)
+    payAccount: null,   // 불러온 입금 계좌 (계좌이체 안내 카드)
+    payDraft: null,     // 결제 확인 모달에서 기다리는 신청서
     adminGrantStudent: '', // 수강권 부여에서 고른 수강생
     noticeEditing: null, // 강사 모드에서 수정 중인 공지 id
     noticeDeleteArmed: null, // 삭제를 한 번 눌러 확인을 기다리는 공지 id
@@ -185,6 +190,92 @@
     return '별도 안내';
   }
 
+  /* ── 결제 표시 ─────────────────────────────────────────── */
+  /* data.js의 기본 입금 계좌와 같은 값 — api가 오기 전에 잠시 쓰입니다 */
+  const FALLBACK_ACCOUNT = { bank: '신한', number: '110612001771', holder: '김*정', link: '' };
+
+  function payAccountInfo() {
+    return UI.payAccount || FALLBACK_ACCOUNT;
+  }
+
+  /* 결제 금액 한 줄 — 확정 금액만, 금액 미정 수업은 '+ 별도' */
+  function payAmountText(pay) {
+    if (!pay) return '';
+    if (pay.amount == null) return PRICES.unknownLabel;
+    return pay.missing ? `${won(pay.amount)} + 별도` : won(pay.amount);
+  }
+
+  /* 결제 방식 배지 — 계좌이체(입금자명) / 카드결제(수단) */
+  function payBadgeHTML(pay) {
+    if (!pay) return '';
+    if (pay.method === 'card') {
+      return `<span class="pay-badge is-card">카드결제 · ${esc(payProviderLabel(pay.provider))}</span>`;
+    }
+    const who = pay.depositor ? `입금자명 ${pay.depositor}` : '입금자명 미기재';
+    const wait = pay.status === 'paid' ? '' : ' · 입금 확인 대기';
+    return `<span class="pay-badge is-transfer">계좌이체 · ${esc(who)}${esc(wait)}</span>`;
+  }
+
+  function payAmountBadgeHTML(pay) {
+    if (!pay) return '';
+    return `<span class="pay-badge pay-badge--amt">${esc(payAmountText(pay))}</span>`;
+  }
+
+  /* 확인 중인 신청서의 결제 상태 한 줄 */
+  function payStateHTML(pay) {
+    if (!pay) return '';
+    const acct = payAccountInfo();
+    const tail = pay.method === 'card'
+      ? '결제 완료 · 바로 개시'
+      : `${acct.bank} ${acct.number} ${acct.holder}`;
+    return `
+      <p class="pay-state">
+        ${payBadgeHTML(pay)}
+        <span>${esc(payAmountText(pay))}</span>
+        <span class="pay-state-account">${esc(tail)}</span>
+      </p>`;
+  }
+
+  /* 최근 결제 한 줄 — 수강생 화면 */
+  function recentPayHTML(v) {
+    const list = (v && v.payments) || [];
+    if (!list.length) return '';
+    const p = list[0];
+    const when = new Date(p.at);
+    const amount = p.amount == null ? PRICES.unknownLabel : won(p.amount);
+    return `
+      <p class="pay-recent">
+        <b>${esc(p.label || '결제')}</b>
+        <span>${esc(amount)} · ${fullDate(when)} ${timeHM(when)}${p.demo ? ' · 시안' : ''}</span>
+      </p>`;
+  }
+
+  /* 클립보드 복사 — https가 아니거나 권한이 없으면 임시 입력창으로 대신합니다 */
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (err) {
+      /* 아래 대체 경로 */
+    }
+    try {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      const done = !!(document.execCommand && document.execCommand('copy'));
+      document.body.removeChild(area);
+      return done;
+    } catch (err) {
+      return false;
+    }
+  }
+
   /* 수강권 카드에 붙는 금액 — 그 수업의 고른 권종 */
   function passAmtText(classId, passType) {
     if (!classId) return { amount: null, text: '선택 전' };
@@ -278,6 +369,118 @@
       <ul class="rp-lines">${lines}</ul>
       <p class="rp-total"><span>${esc(totalLabel)}</span><b data-rp-total>${esc(priceTotalText(summary))}</b></p>
       ${note}`;
+  }
+
+  /* 결제 방식 고르기 — 수업·수강권을 고른 뒤에 나타납니다 */
+  function payBlockHTML(picked, passTypes) {
+    const summary = priceSummary(picked, passTypes);
+    if (!summary.rows.length) {
+      return `
+      <div class="reg-pay" data-reg-pay>
+        <p class="reg-pass-label">결제 방식 <span>계좌이체 · 카드·간편결제</span></p>
+        <p class="pass-empty">수업을 고르면 결제 방식을 고를 수 있어요.</p>
+      </div>`;
+    }
+
+    const acct = payAccountInfo();
+    const method = UI.regPay === 'card' ? 'card' : 'transfer';
+    const pending = summary.rows.some((row) => row.pending);
+    const totalText = pending
+      ? '수강권 선택 전'
+      : (summary.unknown.length ? `${won(summary.confirmed)} + 별도` : won(summary.confirmed));
+
+    const transferHTML = `
+      <div class="pay-account">
+        <p class="pa-label">입금 계좌</p>
+        <p class="pa-sum"><b>${esc(acct.bank)}</b> ${esc(acct.number)} <span>예금주 ${esc(acct.holder)}</span></p>
+        <div class="pa-acts">
+          <button class="btn-mini" type="button" data-copy-account="${esc(acct.number)}">계좌번호 복사</button>
+          ${acct.link ? `<a class="btn-mini" href="${esc(acct.link)}" target="_blank" rel="noopener">송금 링크 열기 ↗</a>` : ''}
+        </div>
+        <label class="pay-field">
+          <span>입금자명</span>
+          <input class="reg-input" id="payDepositor" type="text" maxlength="20" autocomplete="name"
+            value="${esc(UI.regDepositor || '')}" placeholder="입금자명">
+        </label>
+        <p class="pay-hint">신청하면 상태가 <b>입금 확인 대기</b>로 바뀝니다. 강사가 입금을 확인하면 수강이 열리고,
+          입금자명이 다르면 그대로 적어 주세요.</p>
+      </div>`;
+
+    const cardHTML = `
+      <div class="pay-card">
+        <p class="pa-label">결제 수단</p>
+        <div class="pay-methods" role="group" aria-label="결제 수단">
+          ${Object.keys(PAY_PROVIDERS).map((id) => `
+            <label class="pay-method" data-pay-provider="${esc(id)}">
+              <input class="chk" type="checkbox" name="regProvider" value="${esc(id)}"${UI.regProvider === id ? ' checked' : ''}>
+              <span>${esc(PAY_PROVIDERS[id])}</span>
+            </label>`).join('')}
+        </div>
+        <p class="pay-total"><span>결제 금액</span><b data-pay-total>${esc(totalText)}</b></p>
+        <p class="pay-hint">시안용 결제입니다. 실제 결제창은 <b>토스페이먼츠 · 포트원</b> 키를 연결하면 열립니다.</p>
+      </div>`;
+
+    return `
+      <div class="reg-pay" data-reg-pay>
+        <p class="reg-pass-label">결제 방식 <span>하나만 고르세요</span></p>
+        <div class="pay-picks" role="group" aria-label="결제 방식">
+          <label class="pay-pick" data-pay-opt="transfer">
+            <input class="chk" type="checkbox" name="regPay" value="transfer"${method === 'transfer' ? ' checked' : ''}>
+            <span class="pay-body">
+              <span class="pay-name">계좌이체</span>
+              <span class="pay-meta">입금 후 강사 확인</span>
+            </span>
+          </label>
+          <label class="pay-pick" data-pay-opt="card">
+            <input class="chk" type="checkbox" name="regPay" value="card"${method === 'card' ? ' checked' : ''}>
+            <span class="pay-body">
+              <span class="pay-name">카드·간편결제</span>
+              <span class="pay-meta">결제하면 바로 개시</span>
+            </span>
+          </label>
+        </div>
+        <div class="pay-panel" data-pay-panel>${method === 'card' ? cardHTML : transferHTML}</div>
+      </div>`;
+  }
+
+  /* 폼 안에서 결제 방식을 바꿀 때 — 결제 영역만 다시 그리고 버튼 이름을 맞춥니다 */
+  function refreshPayBlock() {
+    const form = $('#registerForm');
+    if (!form) return;
+    const box = form.querySelector('[data-reg-pay]');
+    if (!box) return;
+    box.outerHTML = payBlockHTML(UI.regClasses, UI.regPasses);
+    const submit = form.querySelector('[data-register-submit]');
+    if (submit && UI.regClasses.length) {
+      submit.textContent = UI.regPay === 'card'
+        ? '결제하고 신청하기'
+        : (UI.regType === 'renewal' ? '재등록 신청' : '등록 신청');
+    }
+  }
+
+  /* 결제 확인 모달 (시안 PG) */
+  function openPayModal(picked) {
+    const modal = $('#payModal');
+    if (!modal) return;
+    const summary = priceSummary(picked, UI.regPasses);
+    const pending = summary.rows.some((row) => row.pending);
+    const totalText = pending
+      ? '수강권 선택 전'
+      : (summary.unknown.length ? `${won(summary.confirmed)} + 별도` : won(summary.confirmed));
+    UI.payDraft = {
+      classes: picked.slice(),
+      passTypes: { ...UI.regPasses },
+      provider: UI.regProvider,
+    };
+    const orderEl = $('#payOrder');
+    if (orderEl) orderEl.textContent = classNamesText(picked) || '—';
+    const providerEl = $('#payProvider');
+    if (providerEl) providerEl.textContent = payProviderLabel(UI.regProvider);
+    const amountEl = $('#payAmount');
+    if (amountEl) amountEl.textContent = totalText;
+    const confirm = modal.querySelector('[data-pay-confirm]');
+    if (confirm) confirm.disabled = false;
+    modal.showModal();
   }
 
   /* 신청서에 적힌 수업·수강권 한 줄 (수업별 권종) */
@@ -524,7 +727,12 @@
     }
     const summary = passSummaryText(v);
     if (v.status === 'active') return summary ? `수강권 사용 중 · ${summary}` : '수강권 사용 중';
-    if (v.status === 'pending') return v.pending.type === 'renewal' ? '재등록 요청 확인 중' : '등록 신청 확인 중';
+    if (v.status === 'pending') {
+      if (v.pending.pay && v.pending.pay.method === 'transfer' && v.pending.pay.status !== 'paid') {
+        return '입금 확인 대기 · 강사 확인 후 개시';
+      }
+      return v.pending.type === 'renewal' ? '재등록 요청 확인 중' : '등록 신청 확인 중';
+    }
     if (v.status === 'exhausted') return summary ? `수강권 사용 완료 · ${summary}` : '수강권 사용 완료';
     return '수강권 없음 · 신규 수강생';
   }
@@ -579,6 +787,7 @@
           ${v.pending ? `<p class="state-warn">추가 신청 확인 중 · ${esc(classNamesText(v.pending.classes))}</p>` : ''}
           <button class="btn btn-line btn--sm" type="button" data-goto-online>온라인 클래스로 이동</button>
         </div>
+        ${recentPayHTML(v)}
         ${v.pending ? '' : registerButtonHTML('register', '수업 추가', '수업 추가 신청')}`;
       }
       if (v.status === 'pending') {
@@ -590,6 +799,7 @@
             보낸 시각 ${fullDate(new Date(v.pending.createdAt))} ${timeHM(new Date(v.pending.createdAt))}
           </p>
           ${pendingLineHTML(v)}
+          ${payStateHTML(v.pending.pay)}
         </div>`;
       }
       return `
@@ -606,6 +816,7 @@
     if (v.status === 'active') {
       return `
         ${passListHTML(v)}
+        ${recentPayHTML(v)}
         ${v.pending ? '<p class="pass-note">재등록 요청 확인 중</p>' : ''}`;
     }
 
@@ -619,6 +830,7 @@
             보낸 시각 ${fullDate(new Date(v.pending.createdAt))} ${timeHM(new Date(v.pending.createdAt))}
           </p>
           ${pendingLineHTML(v)}
+          ${payStateHTML(v.pending.pay)}
         </div>`;
     }
 
@@ -707,9 +919,11 @@
 
       <div class="reg-price" data-reg-price>${priceBlockHTML(picked, UI.regPasses)}</div>
 
+      ${payBlockHTML(picked, UI.regPasses)}
+
       <div class="reg-form-foot">
         <button class="btn btn-butter btn-wide" type="submit" data-register-submit${picked.length ? '' : ' disabled'}>
-          ${type === 'renewal' ? '재등록 신청' : '등록 신청'}
+          ${UI.regPay === 'card' ? '결제하고 신청하기' : (type === 'renewal' ? '재등록 신청' : '등록 신청')}
         </button>
         <button class="text-btn" type="button" data-register-cancel>닫기</button>
       </div>
@@ -763,6 +977,22 @@
     /* 예상 결제 금액 */
     const priceBox = form.querySelector('[data-reg-price]');
     if (priceBox) priceBox.innerHTML = priceBlockHTML(picked, UI.regPasses);
+
+    /* 결제 방식 — 금액이 바뀌면 결제 금액도 따라가고, 수업을 모두 떼면 결제 영역이 안내로 돌아갑니다 */
+    const summary = priceSummary(picked, UI.regPasses);
+    const payBox = form.querySelector('[data-reg-pay]');
+    const wantChoices = summary.rows.length > 0;
+    const hasChoices = !!(payBox && payBox.querySelector('[data-pay-opt]'));
+    if (payBox && wantChoices !== hasChoices) {
+      payBox.outerHTML = payBlockHTML(picked, UI.regPasses);
+    }
+    const payTotalEl = form.querySelector('[data-pay-total]');
+    if (payTotalEl) {
+      const pending = summary.rows.some((row) => row.pending);
+      payTotalEl.textContent = pending
+        ? '수강권 선택 전'
+        : (summary.unknown.length ? `${won(summary.confirmed)} + 별도` : won(summary.confirmed));
+    }
   }
 
   /* 수강권 하나만 선택 — 누른 것만 남기고, 누른 걸 다시 눌러도 유지 */
@@ -1001,6 +1231,13 @@
     }
     applyAccess(student);
 
+    /* 계좌이체 안내에 쓰는 입금 계좌 — 강사가 바꾼 값이 바로 반영됩니다 */
+    try {
+      UI.payAccount = await api.payAccount();
+    } catch (err) {
+      UI.payAccount = null;
+    }
+
     const sessions = await api.listSessions();
     const offline = student && student.access ? student.access.offline : [];
     const visibleSessions = sessions.filter((s) => offline.indexOf(s.classId) !== -1);
@@ -1078,6 +1315,9 @@
         UI.regOpen = true;
         UI.regType = type === 'renewal' ? 'renewal' : 'register';
         UI.regWarn = false;
+        UI.regPay = 'transfer';
+        UI.regProvider = 'card';
+        UI.regDepositor = (v && v.name) || '';
         UI.regLivePasses = (v && v.passes) ? v.passes : {};
         UI.regClasses = (v && v.classes ? v.classes.slice() : []);
         /* 아직 살아 있는 수강권은 그대로 두고, 만료·소진된 수강권만 같은 권종으로 미리 골라 둡니다 */
@@ -1099,7 +1339,18 @@
         UI.regClasses = [];
         UI.regPasses = {};
         UI.regLivePasses = {};
+        UI.regPay = 'transfer';
+        UI.regDepositor = '';
         await renderBooking();
+        return;
+      }
+
+      /* 계좌번호 복사 — 클립보드가 막혀 있으면 길게 눌러 복사하도록 안내 */
+      const copyBtn = event.target.closest('[data-copy-account]');
+      if (copyBtn) {
+        const number = copyBtn.dataset.copyAccount || '';
+        const copied = await copyText(number);
+        toast(copied ? `계좌번호 ${number}를 복사했어요.` : '계좌번호를 길게 눌러 복사해 주세요.', !copied);
         return;
       }
 
@@ -1112,6 +1363,8 @@
         UI.regClasses = [];
         UI.regPasses = {};
         UI.regLivePasses = {};
+        UI.regPay = 'transfer';
+        UI.regDepositor = '';
         UI.calMonth = null;
         UI.calDay = null;
         saveCurrent();
@@ -1145,7 +1398,30 @@
       if (passInput) {
         pickPassInForm(passInput);
         syncRegisterForm({ rebuildPass: false });
+        return;
       }
+
+      /* 결제 방식 — 둘 중 하나만 (체크박스 모양의 단일 선택) */
+      const payOpt = event.target.closest('[data-pay-opt] input[type="checkbox"]');
+      if (payOpt) {
+        const value = payOpt.value === 'card' ? 'card' : 'transfer';
+        form.querySelectorAll('[data-pay-opt] input').forEach((box) => { box.checked = box.value === value; });
+        UI.regPay = value;
+        refreshPayBlock();
+        return;
+      }
+
+      /* 카드·간편결제 수단 — 하나만 */
+      const payProvider = event.target.closest('[data-pay-provider] input[type="checkbox"]');
+      if (payProvider) {
+        form.querySelectorAll('[data-pay-provider] input').forEach((box) => { box.checked = box === payProvider; });
+        UI.regProvider = PAY_PROVIDERS[payProvider.value] ? payProvider.value : 'card';
+      }
+    });
+
+    /* 입금자명은 다시 그려도 남도록 입력할 때마다 기억합니다 */
+    area.addEventListener('input', (event) => {
+      if (event.target.id === 'payDepositor') UI.regDepositor = event.target.value;
     });
 
     area.addEventListener('submit', async (event) => {
@@ -1174,16 +1450,37 @@
       }
 
       const submitBtn = form.querySelector('[data-register-submit]');
+
+      /* 카드·간편결제 — 결제 확인 모달을 거친 뒤 신청서를 보냅니다 */
+      if (UI.regPay === 'card') {
+        openPayModal(picked);
+        return;
+      }
+
+      /* 계좌이체 — 입금자명을 받아 '입금 확인 대기'로 보냅니다 */
+      const depositor = (($('#payDepositor') || {}).value || UI.regDepositor || '').trim();
+      if (!depositor) {
+        toast('입금자명을 적어 주세요.', true);
+        return;
+      }
+
       if (submitBtn) submitBtn.disabled = true;
       try {
-        await api.request(UI.studentId, type, picked, { passTypes: UI.regPasses });
+        await api.request(UI.studentId, type, picked, {
+          passTypes: UI.regPasses,
+          pay: { method: 'transfer', depositor },
+        });
         UI.regOpen = false;
         UI.regWarn = false;
         UI.regClasses = [];
         UI.regPasses = {};
         UI.regLivePasses = {};
+        UI.regPay = 'transfer';
+        UI.regDepositor = '';
         await renderBooking();
-        toast(type === 'renewal' ? '재등록 요청을 보냈어요.' : '등록 신청을 보냈어요.');
+        toast(type === 'renewal'
+          ? '재등록 신청을 보냈어요 · 입금 확인 대기'
+          : '등록 신청을 보냈어요 · 입금 확인 대기');
       } catch (err) {
         if (submitBtn) submitBtn.disabled = false;
         toast(err.message || '신청하지 못했어요.', true);
@@ -2148,6 +2445,7 @@
               <span class="pill${s.status === 'active' ? ' is-active' : ''}">${esc(statusLabel)}</span>
               <span class="pass-line">${esc(pass)}</span>
             </span>
+            ${s.pay ? `<span class="stu-cell-pay">${payBadgeHTML(s.pay)}${payAmountBadgeHTML(s.pay)}</span>` : ''}
           </td>
           <td class="cls-cell">${classPicksHTML(s.classes, 'data-cls-student', s.id)}</td>
         </tr>`;
@@ -2408,6 +2706,41 @@
       </div>`;
   }
 
+  /* 강사 모드 — 입금 계좌 설정과 최근 결제 내역 */
+  function adminPayHTML(data) {
+    const acct = data.payAccount || payAccountInfo();
+    const rows = (data.payments || []).map((p) => {
+      const when = new Date(p.at);
+      const who = p.method === 'card'
+        ? `카드결제 · ${payProviderLabel(p.provider)}`
+        : `계좌이체 · 입금 확인${p.depositor ? ` · ${p.depositor}` : ''}`;
+      const amount = p.amount == null ? PRICES.unknownLabel : won(p.amount);
+      return `
+        <li>
+          <span><b>${esc(p.studentName || '—')}</b> · ${esc(who)}</span>
+          <span class="pay-list-sub">${esc(amount)} · ${fullDate(when)} ${timeHM(when)}${p.demo ? ' · 시안' : ''}</span>
+        </li>`;
+    }).join('');
+
+    return `
+      <form class="pay-acct-form" id="payAccountForm" novalidate>
+        <div class="pay-acct-grid">
+          <label><span>은행</span><input class="reg-input" id="payBank" type="text" maxlength="20" value="${esc(acct.bank)}" placeholder="은행"></label>
+          <label><span>계좌번호</span><input class="reg-input" id="payNumber" type="text" maxlength="30" inputmode="numeric" value="${esc(acct.number)}" placeholder="계좌번호"></label>
+          <label><span>예금주</span><input class="reg-input" id="payHolder" type="text" maxlength="30" value="${esc(acct.holder)}" placeholder="예금주"></label>
+        </div>
+        <label>
+          <span>송금 링크 (선택)</span>
+          <input class="reg-input" id="payLink" type="url" maxlength="300" value="${esc(acct.link || '')}" placeholder="https://...">
+        </label>
+        <div class="pay-acct-acts">
+          <span class="grant-hint">수강생 신청서의 계좌이체 안내 카드에 바로 반영됩니다.</span>
+          <button class="btn-mini btn-mini--butter" type="submit" data-pay-account-save>계좌 저장</button>
+        </div>
+      </form>
+      <ul class="pay-list">${rows || '<li><span>아직 결제 내역이 없어요.</span></li>'}</ul>`;
+  }
+
   /* 강사 요청 줄에서 지금 체크된 수업 / 고른 수업별 수강권 */
   function reqClassesOfRow(row) {
     const holder = row ? row.querySelector('[data-req-cls]') : null;
@@ -2520,12 +2853,13 @@
               <span class="req-sub">${fullDate(new Date(req.createdAt))} ${timeHM(new Date(req.createdAt))}</span>
               <span class="req-picked">신청 수업 ${esc(pickedText(req.classes, reqTypes) || '—')}${esc(pref)}</span>
               <span class="req-price" data-req-price>${reqPriceHTML(req.classes, reqTypes)}</span>
+              <span class="req-pay" data-req-pay>${payBadgeHTML(req.pay)}${payAmountBadgeHTML(req.pay)}</span>
               ${keptOnly.length ? `<span class="req-kept">이미 열린 수업 ${esc(classNamesText(keptOnly))} 은 그대로 유지</span>` : ''}
             </div>
             <div class="req-act">
               ${classPicksHTML(req.classes, 'data-req-cls', req.id)}
               ${passSelects ? `<div class="req-passes">${passSelects}</div>` : ''}
-              <button class="btn-mini btn-mini--butter" type="button" data-approve="${esc(req.id)}">승인 · 개시</button>
+              <button class="btn-mini btn-mini--butter" type="button" data-approve="${esc(req.id)}">${req.pay && req.pay.method === 'card' ? '승인 · 개시' : '입금 확인 · 개시'}</button>
             </div>
           </div>`;
       }).join('')
@@ -2545,6 +2879,11 @@
       <section class="admin-block">
         <div class="admin-h"><h4>공지사항 / notice</h4><span>${data.notices.length}건</span></div>
         ${adminNoticesHTML(data.notices)}
+      </section>
+
+      <section class="admin-block" id="adminPay">
+        <div class="admin-h"><h4>입금 계좌 · 결제 / pay</h4><span>계좌이체 · 카드결제</span></div>
+        ${adminPayHTML(data)}
       </section>
 
       <section class="admin-block">
@@ -2689,6 +3028,29 @@
 
     /* 코칭 영상 코멘트 저장 (다시 저장하면 수정) */
     body.addEventListener('submit', async (event) => {
+      const payForm = event.target.closest('#payAccountForm');
+      if (payForm) {
+        event.preventDefault();
+        const btn = payForm.querySelector('[data-pay-account-save]');
+        if (btn) btn.disabled = true;
+        try {
+          const account = await api.setPayAccount({
+            bank: ($('#payBank') || {}).value || '',
+            number: ($('#payNumber') || {}).value || '',
+            holder: ($('#payHolder') || {}).value || '',
+            link: ($('#payLink') || {}).value || '',
+          });
+          UI.payAccount = account;
+          await renderAdmin();
+          await renderBooking();
+          toast(`입금 계좌를 저장했어요 · ${account.bank} ${account.number} ${account.holder}`);
+        } catch (err) {
+          if (btn) btn.disabled = false;
+          toast(err.message || '계좌를 저장하지 못했어요.', true);
+        }
+        return;
+      }
+
       const form = event.target.closest('[data-video-comment]');
       if (!form) return;
       event.preventDefault();
@@ -2956,6 +3318,47 @@
     });
   }
 
+  /* ── 결제 확인 모달 (시안 PG) ───────────────────────────── */
+  function bindPayModal() {
+    const modal = $('#payModal');
+    if (!modal) return;
+
+    modal.addEventListener('click', async (event) => {
+      if (event.target.closest('[data-close-pay]') || event.target === modal) {
+        modal.close();
+        return;
+      }
+      const confirm = event.target.closest('[data-pay-confirm]');
+      if (!confirm || !UI.payDraft || !UI.studentId) return;
+      const draft = UI.payDraft;
+      confirm.disabled = true;
+      try {
+        await api.request(UI.studentId, UI.regType, draft.classes, {
+          passTypes: draft.passTypes,
+          pay: { method: 'card', provider: draft.provider },
+        });
+        modal.close();
+        UI.payDraft = null;
+        UI.regOpen = false;
+        UI.regWarn = false;
+        UI.regClasses = [];
+        UI.regPasses = {};
+        UI.regLivePasses = {};
+        UI.regPay = 'transfer';
+        UI.regDepositor = '';
+        await renderBooking();
+        toast('카드결제 완료(시안) · 수강이 바로 열렸어요.');
+      } catch (err) {
+        confirm.disabled = false;
+        toast(err.message || '결제를 마치지 못했어요.', true);
+      }
+    });
+
+    modal.addEventListener('close', () => {
+      UI.payDraft = null;
+    });
+  }
+
   /* ── 현재 섹션 표시 ────────────────────────────────────── */
   function bindScrollSpy() {
     const links = $$('.head-nav a');
@@ -2989,6 +3392,7 @@
     bindOnline();
     bindAdmin();
     bindModals();
+    bindPayModal();
     bindScrollSpy();
     await renderBooking();
   }

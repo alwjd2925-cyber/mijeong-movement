@@ -66,6 +66,48 @@ const PRICES = {
   },
 };
 
+/* ── 결제 ─────────────────────────────────────────────────
+   시안에서는 실제 PG를 붙이지 않습니다.
+   - 계좌이체: 입금 계좌를 안내하고 입금자명을 받아 '입금 확인 대기'로 두었다가,
+     강사가 입금을 확인해 개시합니다.
+   - 카드·간편결제: 결제 확인 모달(시안)을 거치면 결제된 것으로 기록하고 바로 개시합니다.
+   입금 계좌는 강사 모드에서 바꿀 수 있고, 아래 값이 처음 기본값입니다. */
+const PAY_DEFAULTS = {
+  bank: '신한',
+  number: '110612001771',
+  holder: '김*정',
+  link: '',
+};
+
+/* 카드·간편결제 수단 */
+const PAY_PROVIDERS = {
+  card: '신용·체크카드',
+  kakaopay: '카카오페이',
+  tosspay: '토스페이',
+};
+
+function payProviderLabel(id) {
+  return PAY_PROVIDERS[id] || PAY_PROVIDERS.card;
+}
+
+/* 신청 금액 — 수업별 수강권 금액 + 온라인 수업 금액 (확정된 금액만 더함) */
+function requestAmount(classes, passTypes) {
+  let sum = 0;
+  let missing = false;
+  offlineOf(classes).forEach((classId) => {
+    const type = passTypes ? passTypes[classId] : null;
+    const amount = type ? passPriceOf(classId, Number(type)) : null;
+    if (typeof amount === 'number') sum += amount;
+    else missing = true;
+  });
+  onlineOf(classes).forEach((classId) => {
+    const amount = onlinePriceOf(classId);
+    if (typeof amount === 'number') sum += amount;
+    else missing = true;
+  });
+  return { amount: sum > 0 ? sum : null, missing };
+}
+
 /* 수업 하나의 수강권 금액 — 확정되지 않았으면 null */
 function passPriceOf(classId, passType) {
   const table = PRICES.offlinePass[classId];
@@ -631,7 +673,7 @@ const api = (() => {
         createdAt: iso(addDays(now, -110)),
       },
     ];
-    const state = { version: 3, students, requests: [], bookings: [], notices: demoNotices(now), videos: demoVideos(now) };
+    const state = { version: 3, students, requests: [], bookings: [], notices: demoNotices(now), videos: demoVideos(now), settings: { payAccount: { ...PAY_DEFAULTS } }, payments: [] };
 
     const sessions = buildSessions(now, CONFIG.bookingWindowDays);
     const first = (id) => sessions.find((s) => s.classId === id) || null;
@@ -967,6 +1009,7 @@ const api = (() => {
       state.videos = demoVideos(new Date());
       save();
     }
+    normalizePaySettings(state);
     migrateClasses();
     migratePasses();
     prune();
@@ -1088,6 +1131,33 @@ const api = (() => {
     if (changed) save();
   }
 
+  /* 결제 설정 보정 — 이 기능 이전 데이터에는 입금 계좌 기본값과 결제 내역이 없습니다.
+     강사가 비워 저장한 값은 그대로 두고, 없는 항목만 기본값으로 채웁니다. */
+  function normalizePaySettings(target) {
+    if (!target) return;
+    let changed = false;
+    if (!target.settings || typeof target.settings !== 'object') {
+      target.settings = {};
+      changed = true;
+    }
+    const acct = target.settings.payAccount;
+    if (!acct || typeof acct !== 'object') {
+      target.settings.payAccount = { ...PAY_DEFAULTS };
+      changed = true;
+    } else {
+      const merged = { ...PAY_DEFAULTS, ...acct };
+      if (JSON.stringify(merged) !== JSON.stringify(acct)) {
+        target.settings.payAccount = merged;
+        changed = true;
+      }
+    }
+    if (!Array.isArray(target.payments)) {
+      target.payments = [];
+      changed = true;
+    }
+    return changed;
+  }
+
   /* 지난 예약은 목록에서 정리 (수강권 used 값은 그대로 둡니다) */
   function prune() {
     const live = new Set(buildSessions(new Date(), 30).map((s) => s.id));
@@ -1159,6 +1229,7 @@ const api = (() => {
           createdAt: pending.createdAt,
           classes: normalizeClasses(pending.classes),
           passTypes: pendingPassTypes(pending),
+          pay: pendingPay(pending, student),
         }
         : null,
       pass,
@@ -1167,8 +1238,34 @@ const api = (() => {
       bookingsByClass,
       classes: access.classes,
       access,
+      /* 이 수강생이 남긴 결제 내역 (최근 3건) */
+      payments: (s.payments || [])
+        .filter((p) => p && p.studentId === id)
+        .sort((a, b) => new Date(b.at) - new Date(a.at))
+        .slice(0, 3)
+        .map((p) => ({ ...p })),
       /* 이 수강생에게 보이는 공지 (전체 + 수강 중인 수업) */
       notices: noticesForStudent(student),
+    };
+  }
+
+  /* 신청서에 적힌 결제 정보 — 예전 신청서(결제 기능 이전)는 계좌이체로 읽습니다 */
+  function pendingPay(request, student) {
+    if (!request) return null;
+    const pay = request.pay && typeof request.pay === 'object' ? request.pay : {};
+    const method = pay.method === 'card' ? 'card' : 'transfer';
+    const types = pendingPassTypes(request);
+    const money = pay && typeof pay.amount === 'number'
+      ? { amount: pay.amount, missing: !!pay.missing }
+      : requestAmount(normalizeClasses(request.classes), types);
+    return {
+      method,
+      provider: method === 'card' ? (PAY_PROVIDERS[pay.provider] ? pay.provider : 'card') : null,
+      depositor: method === 'transfer' ? (pay.depositor || (student ? student.name : '')) : '',
+      amount: money.amount,
+      missing: !!money.missing,
+      status: pay.status === 'paid' ? 'paid' : (method === 'card' ? 'paid' : 'awaiting_deposit'),
+      paidAt: pay.paidAt || null,
     };
   }
 
@@ -1190,6 +1287,68 @@ const api = (() => {
       if (CONFIG.passTypes[n] && passPriceOf(classId, n) != null) out[classId] = n;
     });
     return out;
+  }
+
+  /* 승인 처리 — 강사 승인과 카드결제 즉시 개시가 함께 씁니다.
+     신청한 수업을 한 번에 열고, 이미 열려 있던 수업은 그대로 둡니다.
+     passTypes 가 비어 있으면 수강권 없이 수업만 엽니다(온라인 전용 신청). */
+  function approveIn(s, req, passTypes, classes) {
+    if (req.status !== 'pending') throw new Error('이미 처리된 요청이에요.');
+    const student = s.students.find((x) => x.id === req.studentId);
+    if (!student) throw new Error('수강생을 찾을 수 없어요.');
+
+    const picked = normalizeClasses(Array.isArray(classes) ? classes : req.classes);
+    if (!picked.length) throw new Error('수업을 하나 이상 선택해 주세요.');
+    const merged = normalizeClasses((student.classes || []).concat(picked));
+    const offlinePicked = offlineOf(picked);
+
+    const raw = passTypes === undefined ? pendingPassTypes(req) : passTypes;
+    const types = parsePassTypes(raw, offlinePicked);
+    Object.keys(types).forEach((classId) => {
+      if (offlinePicked.indexOf(classId) === -1) {
+        throw new Error('수강권은 오프라인 수업에만 고를 수 있어요.');
+      }
+      assertPassFits([classId], types[classId]);
+    });
+    const active = activeOfflineOf(student);
+    offlinePicked.forEach((classId) => {
+      if (!types[classId] && active.indexOf(classId) === -1) {
+        throw new Error('오프라인 수업을 열려면 수강권을 골라 주세요.');
+      }
+    });
+
+    student.classes = merged;
+    Object.keys(types).forEach((classId) => issuePass(student, classId, types[classId], s));
+
+    const now = new Date().toISOString();
+    s.requests
+      .filter((r) => r.studentId === student.id && r.status === 'pending')
+      .forEach((r) => {
+        r.status = 'approved';
+        r.resolvedAt = now;
+      });
+
+    /* 계좌이체 신청은 입금을 확인한 이 시점을 결제 완료로 기록합니다 */
+    if (req.pay && req.pay.method === 'transfer' && req.pay.status !== 'paid') {
+      req.pay.status = 'paid';
+      req.pay.paidAt = now;
+      if (!Array.isArray(s.payments)) s.payments = [];
+      s.payments.push({
+        id: uid('pm'),
+        studentId: student.id,
+        requestId: req.id,
+        method: 'transfer',
+        provider: null,
+        depositor: req.pay.depositor || student.name,
+        amount: req.pay.amount == null ? null : req.pay.amount,
+        label: '계좌이체 · 입금 확인',
+        at: now,
+        demo: false,
+      });
+    }
+
+    save();
+    return student;
   }
 
   return {
@@ -1312,6 +1471,9 @@ const api = (() => {
     /* classes: 수강을 원하는 수업(최소 1개, 여러 개 가능). 강사가 승인할 때 그대로 열어 줍니다.
        options.passTypes: 수업별 희망 수강권 { handstand: 8, functional: 1 }.
          숫자 하나만 주면 그 수업들 모두에 같은 권종으로 신청합니다(예전 방식).
+       options.pay: 결제 방식 { method: 'transfer'|'card', depositor, provider }
+         - transfer(기본): 입금자명을 받아 '입금 확인 대기'로 두고 강사가 확인해 개시
+         - card: 결제 확인(시안)을 거친 것으로 보고 바로 개시 + 결제 내역 기록
        허용된 수업을 하나도 고르지 않으면 신청 자체를 막습니다. */
     async request(studentId, type, classes, options = {}) {
       const s = load();
@@ -1342,6 +1504,18 @@ const api = (() => {
         }
       });
 
+      /* 결제 방식 — 기본은 계좌이체 */
+      const payInput = (options && options.pay) || {};
+      const method = payInput.method === 'card' ? 'card' : 'transfer';
+      const provider = method === 'card' && PAY_PROVIDERS[payInput.provider] ? payInput.provider : null;
+      let depositor = '';
+      if (method === 'transfer') {
+        const rawDepositor = payInput.depositor == null ? '' : String(payInput.depositor).trim();
+        if (rawDepositor.length > 20) throw new Error('입금자명은 20자까지 쓸 수 있어요.');
+        depositor = rawDepositor || student.name;
+      }
+      const money = requestAmount(picked, passTypes);
+
       const request = {
         id: uid('rq'),
         studentId,
@@ -1350,9 +1524,47 @@ const api = (() => {
         passTypes,
         status: 'pending',
         createdAt: new Date().toISOString(),
+        pay: {
+          method,
+          provider: method === 'card' ? (provider || 'card') : null,
+          depositor: method === 'transfer' ? (depositor || student.name) : '',
+          amount: money.amount,
+          missing: money.missing,
+          status: 'awaiting_deposit',
+          paidAt: null,
+        },
       };
       s.requests.push(request);
       save();
+
+      if (method === 'card') {
+        /* 카드·간편결제(시안) — 결제를 마친 것으로 보고 바로 개시합니다.
+           개시에 실패하면 신청 자체를 남기지 않습니다. */
+        try {
+          approveIn(s, request, passTypes, picked);
+        } catch (err) {
+          s.requests = s.requests.filter((r) => r.id !== request.id);
+          save();
+          throw err;
+        }
+        request.pay.status = 'paid';
+        request.pay.paidAt = new Date().toISOString();
+        if (!Array.isArray(s.payments)) s.payments = [];
+        s.payments.push({
+          id: uid('pm'),
+          studentId,
+          requestId: request.id,
+          method: 'card',
+          provider: request.pay.provider,
+          depositor: '',
+          amount: money.amount,
+          label: `카드결제 · ${payProviderLabel(request.pay.provider)}`,
+          at: request.pay.paidAt,
+          demo: true,
+        });
+        save();
+      }
+
       return viewStudent(studentId);
     },
 
@@ -1402,47 +1614,49 @@ const api = (() => {
 
     /* 승인 — 신청한 수업을 한 번에 엽니다.
        이미 열려 있던 수업은 그대로 두고 신청한 수업을 더합니다.
-       passTypes 가 비어 있으면 수강권 없이 수업만 엽니다(온라인 전용 신청). */
+       passTypes 가 비어 있으면 수강권 없이 수업만 엽니다(온라인 전용 신청).
+       계좌이체 신청이면 입금을 확인한 이 시점을 결제 완료로 기록합니다. */
     async approveRequest(requestId, passTypes, classes) {
       const s = load();
       const req = s.requests.find((r) => r.id === requestId);
       if (!req) throw new Error('요청을 찾을 수 없어요.');
-      if (req.status !== 'pending') throw new Error('이미 처리된 요청이에요.');
-      const student = s.students.find((x) => x.id === req.studentId);
-      if (!student) throw new Error('수강생을 찾을 수 없어요.');
-
-      const picked = normalizeClasses(Array.isArray(classes) ? classes : req.classes);
-      if (!picked.length) throw new Error('수업을 하나 이상 선택해 주세요.');
-      const merged = normalizeClasses((student.classes || []).concat(picked));
-      const offlinePicked = offlineOf(picked);
-
-      const raw = passTypes === undefined ? pendingPassTypes(req) : passTypes;
-      const types = parsePassTypes(raw, offlinePicked);
-      Object.keys(types).forEach((classId) => {
-        if (offlinePicked.indexOf(classId) === -1) {
-          throw new Error('수강권은 오프라인 수업에만 고를 수 있어요.');
-        }
-        assertPassFits([classId], types[classId]);
-      });
-      const active = activeOfflineOf(student);
-      offlinePicked.forEach((classId) => {
-        if (!types[classId] && active.indexOf(classId) === -1) {
-          throw new Error('오프라인 수업을 열려면 수강권을 골라 주세요.');
-        }
-      });
-
-      student.classes = merged;
-      Object.keys(types).forEach((classId) => issuePass(student, classId, types[classId], s));
-
-      const now = new Date().toISOString();
-      s.requests
-        .filter((r) => r.studentId === student.id && r.status === 'pending')
-        .forEach((r) => {
-          r.status = 'approved';
-          r.resolvedAt = now;
-        });
-      save();
+      const student = approveIn(s, req, passTypes, classes);
       return viewStudent(student.id);
+    },
+
+    /* ── 입금 계좌 · 결제 내역 ── */
+    /* 계좌이체 안내 카드에 쓰는 입금 계좌 (강사 모드에서 바꿉니다) */
+    async payAccount() {
+      const s = load();
+      normalizePaySettings(s);
+      return { ...s.settings.payAccount };
+    },
+
+    /* 강사: 입금 계좌 저장 — 은행명 · 계좌번호 · 예금주 · 송금 링크(선택) */
+    async setPayAccount(fields) {
+      const s = load();
+      normalizePaySettings(s);
+      const src = fields || {};
+      const bank = String(src.bank == null ? '' : src.bank).trim().slice(0, 20);
+      const number = String(src.number == null ? '' : src.number).replace(/[^0-9-]/g, '').slice(0, 30);
+      const holder = String(src.holder == null ? '' : src.holder).trim().slice(0, 30);
+      const link = String(src.link == null ? '' : src.link).trim().slice(0, 300);
+      if (!bank) throw new Error('은행명을 입력해 주세요.');
+      if (number.replace(/-/g, '').length < 6) throw new Error('계좌번호를 다시 확인해 주세요.');
+      if (!holder) throw new Error('예금주를 입력해 주세요.');
+      if (link && !/^https?:\/\//i.test(link)) throw new Error('송금 링크는 http:// 또는 https://로 시작해야 해요.');
+      s.settings.payAccount = { bank, number, holder, link };
+      save();
+      return { ...s.settings.payAccount };
+    },
+
+    /* 결제 내역 — studentId를 주면 그 수강생 것만 */
+    async listPayments(studentId) {
+      const s = load();
+      const list = (s.payments || [])
+        .filter((p) => p && (studentId === undefined || p.studentId === studentId))
+        .sort((a, b) => new Date(b.at) - new Date(a.at));
+      return list.map((p) => ({ ...p }));
     },
 
     /* ── 강사: 회원 등록 · 수업 접근 관리 ── */
@@ -1687,9 +1901,25 @@ const api = (() => {
       const sessions = buildSessions(new Date(), CONFIG.bookingWindowDays);
       const students = s.students.map((st) => {
         const v = viewStudent(st.id);
+        /* 결제 방식 배지 — 확인 중인 신청서 → 가장 최근 결제 순 */
+        const pendingReq = s.requests.find((r) => r.studentId === st.id && r.status === 'pending');
+        const lastPay = (s.payments || [])
+          .filter((p) => p.studentId === st.id)
+          .sort((a, b) => new Date(b.at) - new Date(a.at))[0];
+        const pay = pendingReq
+          ? pendingPay(pendingReq, st)
+          : (lastPay ? {
+            method: lastPay.method === 'card' ? 'card' : 'transfer',
+            provider: lastPay.provider || null,
+            depositor: lastPay.depositor || '',
+            amount: lastPay.amount == null ? null : lastPay.amount,
+            missing: false,
+            status: 'paid',
+            paidAt: lastPay.at,
+          } : null);
         return {
           id: v.id, name: v.name, code: v.code, status: v.status,
-          pass: v.pass, passes: v.passes, classes: v.classes,
+          pass: v.pass, passes: v.passes, classes: v.classes, pay,
         };
       });
       const nameOf = new Map(students.map((st) => [st.id, st]));
@@ -1738,6 +1968,15 @@ const api = (() => {
         onlineWeekKey: weekKeyOf(now),
         videos,
         videoPending: videos.filter((v) => v.status !== 'done').length,
+        payAccount: { ...s.settings.payAccount },
+        payments: (s.payments || [])
+          .slice()
+          .sort((a, b) => new Date(b.at) - new Date(a.at))
+          .slice(0, 10)
+          .map((p) => ({
+            ...p,
+            studentName: (s.students.find((x) => x.id === p.studentId) || {}).name || '—',
+          })),
         pending: s.requests
           .filter((r) => r.status === 'pending')
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -1753,6 +1992,7 @@ const api = (() => {
               studentCode: st ? st.code : '',
               classes: reqClasses,
               passTypes: pendingPassTypes(r),
+              pay: pendingPay(r, st),
               /* 이미 열려 있는 수업 (승인하면 여기에 신청 수업이 더해집니다) */
               currentClasses: normalizeClasses(st && st.classes),
               offline: offlineOf(reqClasses).length,
