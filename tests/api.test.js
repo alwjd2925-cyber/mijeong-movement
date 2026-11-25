@@ -1262,6 +1262,112 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     });
   }
 
+  /* ── [21] 수업 동작 시범 영상 — 등록 · 수정 · 삭제 · 재생 조회 ────── */
+  console.log('\n[21] 수업 동작 시범 영상');
+  {
+    /* 시안용 샘플 — 모닝 첫 동작(mm1)에 샘플 파일 한 건 */
+    const first = makeContext({ now: NOW });
+    const list0 = await first.api.listMovementVideos();
+    eq('샘플 영상은 모닝 첫 동작 1건', Object.keys(list0), ['mm1']);
+    eq('샘플은 영상 파일', list0.mm1.source, 'file');
+    eq('샘플 플래그', list0.mm1.demo, true);
+    eq('샘플 파일 크기', list0.mm1.fileSize > 0, true);
+
+    const play0 = await first.api.resolveMovementVideo('mm1');
+    eq('모닝 첫 동작 — 영상 파일 재생', play0.source, 'file');
+    eq('샘플 파일 경로', play0.demoFile, 'assets/coaching-sample.mp4');
+    ok('모닝 그룹에 속함', play0.groups.indexOf('morning') !== -1, JSON.stringify(play0.groups));
+    eq('시안용 샘플은 등록 표시', play0.registered, true);
+
+    const none0 = await first.api.resolveMovementVideo('w2');
+    eq('등록 전 P3 워밍업은 준비 중', none0.source, 'none');
+    eq('준비 중에는 유튜브 ID 없음', none0.youtubeId, '');
+
+    /* 분류 탭 — 모닝 8 · 코칭 8 · P3 18(워밍업 3 · 비기너 8 · 인터미디엇 7) */
+    const groups = first.api.movementGroups();
+    eq('분류는 모닝 · 코칭 · P3', groups.map((g) => g.key), ['morning', 'coaching', 'p3']);
+    eq('모닝 모빌리티 8개 동작', groups[0].movements.length, 8);
+    eq('핸드스탠드 온라인 코칭 8개 동작', groups[1].movements.length, 8);
+    eq('P3 시퀀스 18개 동작', groups[2].movements.length, 18);
+    eq('P3 소제목 3개', Array.from(new Set(groups[2].movements.map((m) => m.section))), ['워밍업', 'Beginner', 'Intermediate']);
+    eq('P3 비기너 8개', groups[2].movements.filter((m) => m.section === 'Beginner').length, 8);
+    eq('P3 인터미디엇 7개', groups[2].movements.filter((m) => m.section === 'Intermediate').length, 7);
+
+    /* 유튜브 등록 → 시퀀스 · 온라인 코칭 재생 */
+    const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
+    const yt = await api.saveMovementVideo('b3', { youtubeId: 'https://youtu.be/dQw4w9WgXcQ' });
+    eq('유튜브 주소로 등록', yt.source, 'youtube');
+    eq('주소에서 영상 ID 추출', yt.youtubeId, 'dQw4w9WgXcQ');
+    eq('유튜브 등록은 시퀀스 동작 이름을 붙임', yt.name, '플랭크 숄더 슈러그');
+
+    const seqPlay = await api.resolveMovementVideo('b3');
+    eq('P3 시퀀스 재생 — 유튜브', seqPlay.source, 'youtube');
+    ok('온라인 코칭 그룹에도 같은 동작', seqPlay.groups.indexOf('coaching') !== -1, JSON.stringify(seqPlay.groups));
+    eq('등록한 유튜브 표시', seqPlay.registered, true);
+    eq('크게 보기 주소', seqPlay.watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+
+    /* 파일로 수정 — 파일이 유튜브보다 우선 */
+    const upd = await api.saveMovementVideo('b3', { file: { name: '파이크-연습.mp4', size: 5 * 1024 * 1024, type: 'video/mp4' } });
+    eq('영상 파일로 수정', upd.source, 'file');
+    eq('파일 이름 저장', upd.fileName, '파이크-연습.mp4');
+    eq('파일 크기 저장', upd.fileSize, 5 * 1024 * 1024);
+    const filePlay = await api.resolveMovementVideo('b3');
+    eq('파일이 있으면 파일 재생', filePlay.source, 'file');
+    eq('파일로 바꾸면 유튜브 ID는 비움', filePlay.youtubeId, '');
+    eq('저장소에도 영상 파일', read().movementVideos.b3.source, 'file');
+
+    /* 유튜브 ID만 넣어도 등록 (동영상 ID 직접 입력) */
+    const rawId = await api.saveMovementVideo('i7', { youtubeId: ' dQw4w9WgXcQ ' });
+    eq('영상 ID 직접 입력', rawId.youtubeId, 'dQw4w9WgXcQ');
+    eq('ID 입력은 유튜브 주소로 채움', rawId.url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+
+    /* 삭제 */
+    await api.deleteMovementVideo('b3');
+    eq('삭제 후 준비 중으로 돌아감', (await api.resolveMovementVideo('b3')).source, 'none');
+    eq('저장소에서도 사라짐', 'b3' in read().movementVideos, false);
+    eq('다른 동작 영상은 그대로', (await api.resolveMovementVideo('i7')).source, 'youtube');
+
+    /* 샘플을 지우면 새로고침해도 다시 생기지 않음 */
+    const demoCtx = makeContext({ now: NOW });
+    await demoCtx.api.deleteMovementVideo('mm1');
+    eq('샘플 삭제 직후 목록 비어 있음', Object.keys(await demoCtx.api.listMovementVideos()), []);
+    const afterReload = makeContext({ now: NOW, state: demoCtx.read() });
+    eq('새로고침 후에도 샘플 복구 없음', Object.keys(await afterReload.api.listMovementVideos()), []);
+    eq('지운 샘플은 준비 중', (await afterReload.api.resolveMovementVideo('mm1')).source, 'none');
+
+    /* data.js 기본 유튜브 ID가 있으면 등록 전에도 재생 */
+    const defCtx = makeContext({ now: NOW, state: baseState(NOW) });
+    vm.runInContext("WARMUP[0].video.youtubeId = 'abc123XYz9'", defCtx.ctx);
+    const defPlay = await defCtx.api.resolveMovementVideo('w1');
+    eq('data.js 기본 유튜브도 재생', defPlay.source, 'youtube');
+    eq('기본 유튜브는 강사 등록 아님', defPlay.registered, false);
+
+    /* 검증 — 잘못된 등록은 막고, 기존 영상은 지우지 않음 */
+    const guard = makeContext({ now: NOW, state: baseState(NOW) });
+    await guard.api.saveMovementVideo('mm4', { youtubeId: 'dQw4w9WgXcQ' });
+    await throws('없는 동작 id는 거부', () => guard.api.saveMovementVideo('zz9', { youtubeId: 'dQw4w9WgXcQ' }), /동작/);
+    await throws('파일과 유튜브 동시 등록 거부', () => guard.api.saveMovementVideo('mm2', {
+      youtubeId: 'dQw4w9WgXcQ', file: { name: 'a.mp4', size: 1000 },
+    }), /하나만/);
+    await throws('빈 등록 거부', () => guard.api.saveMovementVideo('mm2', {}), /하나는/);
+    await throws('유튜브가 아닌 주소 거부', () => guard.api.saveMovementVideo('mm2', { youtubeId: '안녕하세요' }), /유튜브/);
+    await throws('mp4·mov·webm 외 확장자 거부', () => guard.api.saveMovementVideo('mm2', { file: { name: 'demo.avi', size: 2048 } }), /mp4/);
+    await throws('빈 파일 거부', () => guard.api.saveMovementVideo('mm2', { file: { name: 'empty.mp4', size: 0 } }), /빈 영상/);
+    await throws('80MB 초과 거부', () => guard.api.saveMovementVideo('mm2', {
+      file: { name: 'big.mp4', size: 80 * 1024 * 1024 + 1 },
+    }), /80MB/);
+    await throws('등록 안 된 동작 삭제 거부', () => guard.api.deleteMovementVideo('mm3'), /등록된 영상이 없어요/);
+    eq('실패한 등록은 기존 영상을 건드리지 않음', (await guard.api.resolveMovementVideo('mm4')).source, 'youtube');
+
+    /* catalog에 없는 예전 데이터는 목록에서 빠짐 */
+    const stale = makeContext({ now: NOW, state: {
+      ...baseState(NOW),
+      movementVideos: { zz9: { movementId: 'zz9', source: 'youtube', youtubeId: 'dQw4w9WgXcQ' } },
+      movementVideoSeeded: true,
+    } });
+    eq('알 수 없는 동작의 저장값은 무시', Object.keys(await stale.api.listMovementVideos()), []);
+  }
+
   /* ── 결과 ─────────────────────────────────────────────── */
   console.log(`\n${failures.length ? '✗ 실패' : '✓ 통과'} — ${passed}개 확인, ${failures.length}개 실패`);
   if (failures.length) {

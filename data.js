@@ -524,6 +524,117 @@ const ONLINE = {
 };
 
 /* ════════════════════════════════════════════════════════════
+   수업 동작 시범 영상 (강사 모드에서 등록)
+   ════════════════════════════════════════════════════════════
+   동작 id 하나에 영상 하나를 붙입니다. 영상 파일(Blob)은 app.js가
+   IndexedDB(mijeong_video_db)에 'mv:<동작 id>' 키로 두고, 여기에는
+   파일 정보 · 유튜브 ID · 갱신 시각만 남깁니다.
+   - 모닝 모빌리티 8개 · 핸드스탠드 온라인 코칭 8개 · P3 시퀀스 18개
+   - 온라인 코칭의 동작은 P3 시퀀스 동작과 같은 id라, 한 번 등록하면 둘 다 재생됩니다. */
+const MOVEMENT_GROUPS = [
+  { key: 'morning', label: '모닝 모빌리티', program: 'morning' },
+  { key: 'coaching', label: '핸드스탠드 온라인 코칭', program: 'coaching' },
+  { key: 'p3', label: 'P3 시퀀스', program: 'p3' },
+];
+
+const MV_FILE_MAX = 80 * 1024 * 1024; // 80MB
+const MV_EXT = ['mp4', 'mov', 'webm'];
+
+/* 동작 카탈로그 — id → { item, name, groups: ['morning'], section: '모닝 모빌리티', order } */
+const MOVEMENT_CATALOG = (() => {
+  const out = [];
+  const seen = new Map();
+  const push = (item, groupKey, section, order) => {
+    let row = seen.get(item.id);
+    if (!row) {
+      row = { id: item.id, name: item.name, item, groups: [], sections: [], order };
+      seen.set(item.id, row);
+      out.push(row);
+    }
+    if (row.groups.indexOf(groupKey) === -1) {
+      row.groups.push(groupKey);
+      row.sections.push(section);
+    }
+    if (order < row.order) row.order = order;
+  };
+  ONLINE.morning.movements.forEach((item, i) => push(item, 'morning', '모닝 모빌리티', i));
+  ONLINE.coaching.movements.forEach((item, i) => push(item, 'coaching', '온라인 코칭', 100 + i));
+  WARMUP.forEach((item, i) => push(item, 'p3', '워밍업', 200 + i));
+  SEQUENCES.beginner.forEach((item, i) => push(item, 'p3', 'Beginner', 300 + i));
+  SEQUENCES.intermediate.forEach((item, i) => push(item, 'p3', 'Intermediate', 400 + i));
+  return out.sort((a, b) => a.order - b.order);
+})();
+
+const MOVEMENT_INDEX = new Map(MOVEMENT_CATALOG.map((row) => [row.id, row]));
+
+/* 시안용 샘플 — 모닝 모빌리티 첫 동작에 가벼운 샘플 영상을 붙여 둡니다.
+   강사가 삭제하면 다시 채우지 않습니다(movementVideoSeeded 플래그). */
+function demoMovementVideos() {
+  return {
+    mm1: {
+      movementId: 'mm1',
+      source: 'file',
+      fileName: '모닝-어깨-샘플.mp4',
+      fileSize: 16167,
+      fileType: 'video/mp4',
+      youtubeId: '',
+      url: '',
+      demo: true,
+      demoFile: 'assets/coaching-sample.mp4',
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
+
+/* 유튜브 주소·ID에서 영상 ID만 뽑습니다 */
+function movementYoutubeId(video) {
+  if (!video) return '';
+  const raw = String(video.youtubeId || '').trim();
+  if (/^[\w-]{6,20}$/.test(raw)) return raw;
+  const source = String(video.url || raw || '').trim();
+  const match = source.match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{6,20})/);
+  return match ? match[1] : '';
+}
+
+/* 저장된 동작 영상 한 건을 화면·검증이 기대하는 모양으로 맞춥니다 */
+function normalizeMovementVideo(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = String(raw.movementId || raw.id || '');
+  const row = MOVEMENT_INDEX.get(id);
+  if (!row) return null;
+  const source = raw.source === 'youtube' ? 'youtube' : raw.source === 'file' ? 'file' : '';
+  if (!source) return null;
+  const file = source === 'file';
+  return {
+    movementId: id,
+    name: row.name,
+    groups: row.groups.slice(),
+    source,
+    fileName: file ? String(raw.fileName || '') : '',
+    fileSize: file && Number(raw.fileSize) > 0 ? Math.round(Number(raw.fileSize)) : 0,
+    fileType: file ? String(raw.fileType || '') : '',
+    youtubeId: source === 'youtube' ? String(raw.youtubeId || '') : '',
+    url: source === 'youtube' ? String(raw.url || '') : '',
+    demo: source === 'file' && !!raw.demo,
+    demoFile: source === 'file' && raw.demo ? String(raw.demoFile || '') : '',
+    updatedAt: raw.updatedAt ? String(raw.updatedAt) : '',
+  };
+}
+
+/* 저장된 동작 영상 전체 — 동작 id → 등록 내용 */
+function movementVideoRows(state) {
+  const raw = state && state.movementVideos && typeof state.movementVideos === 'object'
+    ? state.movementVideos
+    : {};
+  const out = {};
+  Object.keys(raw).forEach((id) => {
+    const row = normalizeMovementVideo(raw[id]);
+    if (row) out[row.movementId] = row;
+  });
+  return out;
+}
+
+/* ════════════════════════════════════════════════════════════
    API (localStorage 어댑터)
    ════════════════════════════════════════════════════════════ */
 
@@ -678,7 +789,7 @@ const api = (() => {
         createdAt: iso(addDays(now, -110)),
       },
     ];
-    const state = { version: 3, students, requests: [], bookings: [], notices: demoNotices(now), videos: demoVideos(now), settings: { payAccount: { ...PAY_DEFAULTS } }, payments: [] };
+    const state = { version: 3, students, requests: [], bookings: [], notices: demoNotices(now), videos: demoVideos(now), movementVideos: demoMovementVideos(), movementVideoSeeded: true, settings: { payAccount: { ...PAY_DEFAULTS } }, payments: [] };
 
     const sessions = buildSessions(now, CONFIG.bookingWindowDays);
     const first = (id) => sessions.find((s) => s.classId === id) || null;
@@ -1015,6 +1126,13 @@ const api = (() => {
        수강생이 모두 지우면 빈 배열로 남아 다시 채우지 않습니다. */
     if (!Array.isArray(state.videos)) {
       state.videos = demoVideos(new Date());
+      save();
+    }
+    /* 동작 영상 기능 이전 데이터에는 모닝 첫 동작 샘플을 한 번 넣어 둡니다.
+       강사가 지우면(movementVideoSeeded) 다시 채우지 않습니다. */
+    if (!state.movementVideos || typeof state.movementVideos !== 'object') {
+      state.movementVideos = state.movementVideoSeeded ? {} : demoMovementVideos();
+      state.movementVideoSeeded = true;
       save();
     }
     normalizePaySettings(state);
@@ -1904,6 +2022,163 @@ const api = (() => {
       return normalizeVideo(video);
     },
 
+    /* ── 수업 동작 시범 영상: 강사 등록 · 조회 · 삭제 ── */
+    /* 동작 id 하나에 영상 하나. 영상 파일 Blob은 app.js가 IndexedDB에 'mv:<id>'로 둡니다. */
+    async listMovementVideos() {
+      return movementVideoRows(load());
+    },
+
+    async getMovementVideo(movementId) {
+      return movementVideoRows(load())[String(movementId || '')] || null;
+    },
+
+    /* 강사: 등록·수정 — input { file: {name,size,type} } 또는 { youtubeId: '주소 또는 ID' } */
+    async saveMovementVideo(movementId, input = {}) {
+      const s = load();
+      const id = String(movementId || '');
+      const row = MOVEMENT_INDEX.get(id);
+      if (!row) throw new Error('동작을 찾을 수 없어요.');
+
+      const file = input.file || null;
+      const ytRaw = String(input.youtubeId == null ? '' : input.youtubeId).trim();
+      if (file && ytRaw) throw new Error('영상 파일과 유튜브 주소 중 하나만 넣어 주세요.');
+
+      let entry;
+      if (file) {
+        const fileName = String(file.name || '').trim().slice(0, 120);
+        if (!fileName) throw new Error('영상 파일을 골라 주세요.');
+        const ext = (fileName.split('.').pop() || '').toLowerCase();
+        if (MV_EXT.indexOf(ext) === -1) throw new Error('mp4 · mov · webm 영상만 올릴 수 있어요.');
+        const size = Number(file.size) || 0;
+        if (size <= 0) throw new Error('빈 영상 파일이에요. 다시 골라 주세요.');
+        if (size > MV_FILE_MAX) throw new Error('영상은 한 개에 80MB까지 올릴 수 있어요. 짧게 잘라서 올려 주세요.');
+        entry = {
+          movementId: id,
+          source: 'file',
+          fileName,
+          fileSize: Math.round(size),
+          fileType: String(file.type || ''),
+          youtubeId: '',
+          url: '',
+          demo: false,
+          demoFile: '',
+          updatedAt: new Date().toISOString(),
+        };
+      } else if (ytRaw) {
+        const youtubeId = movementYoutubeId({ youtubeId: ytRaw, url: ytRaw });
+        if (!youtubeId) throw new Error('유튜브 주소나 영상 ID를 다시 확인해 주세요.');
+        entry = {
+          movementId: id,
+          source: 'youtube',
+          fileName: '',
+          fileSize: 0,
+          fileType: '',
+          youtubeId,
+          url: /^https?:\/\//i.test(ytRaw) ? ytRaw.slice(0, 300) : `https://www.youtube.com/watch?v=${youtubeId}`,
+          demo: false,
+          demoFile: '',
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        throw new Error('영상 파일이나 유튜브 주소 중 하나는 넣어 주세요.');
+      }
+
+      if (!s.movementVideos || typeof s.movementVideos !== 'object') s.movementVideos = {};
+      s.movementVideos[id] = entry;
+      s.movementVideoSeeded = true;
+      save();
+      return normalizeMovementVideo(entry);
+    },
+
+    async deleteMovementVideo(movementId) {
+      const s = load();
+      const id = String(movementId || '');
+      if (!MOVEMENT_INDEX.has(id)) throw new Error('동작을 찾을 수 없어요.');
+      if (!s.movementVideos || !s.movementVideos[id]) throw new Error('등록된 영상이 없어요.');
+      delete s.movementVideos[id];
+      /* 샘플을 지웠으면 새로고침해도 다시 생기지 않습니다 */
+      s.movementVideoSeeded = true;
+      save();
+      return true;
+    },
+
+    /* 수강생 재생용 — 영상 파일 > 등록한 유튜브 > data.js 기본 유튜브 > 없음 */
+    async resolveMovementVideo(movementId) {
+      const id = String(movementId || '');
+      const row = MOVEMENT_INDEX.get(id);
+      if (!row) throw new Error('동작을 찾을 수 없어요.');
+      const base = {
+        movementId: id,
+        name: row.name,
+        groups: row.groups.slice(),
+        source: 'none',
+        youtubeId: '',
+        watchUrl: '',
+        fileName: '',
+        fileSize: 0,
+        demo: false,
+        demoFile: '',
+        registered: false,
+      };
+      const saved = movementVideoRows(load())[id] || null;
+      if (saved && saved.source === 'file') {
+        return {
+          ...base,
+          source: 'file',
+          fileName: saved.fileName,
+          fileSize: saved.fileSize,
+          demo: saved.demo,
+          demoFile: saved.demoFile,
+          registered: true,
+        };
+      }
+      if (saved && saved.source === 'youtube' && saved.youtubeId) {
+        return {
+          ...base,
+          source: 'youtube',
+          youtubeId: saved.youtubeId,
+          watchUrl: `https://www.youtube.com/watch?v=${saved.youtubeId}`,
+          registered: true,
+        };
+      }
+      const fallback = movementYoutubeId(row.item.video);
+      if (fallback) {
+        return {
+          ...base,
+          source: 'youtube',
+          youtubeId: fallback,
+          watchUrl: `https://www.youtube.com/watch?v=${fallback}`,
+        };
+      }
+      return base;
+    },
+
+    /* 강사 모드 필터 탭 — 그룹별 동작 목록 (P3는 워밍업 · Beginner · Intermediate 순서 그대로) */
+    movementGroups() {
+      const seqOf = {
+        morning: ONLINE.morning.movements,
+        coaching: ONLINE.coaching.movements,
+        p3: [...WARMUP, ...SEQUENCES.beginner, ...SEQUENCES.intermediate],
+      };
+      return MOVEMENT_GROUPS.map((group) => {
+        const seq = seqOf[group.key] || [];
+        return {
+          key: group.key,
+          label: group.label,
+          movements: seq.map((item) => {
+            const row = MOVEMENT_INDEX.get(item.id);
+            const idx = row ? row.groups.indexOf(group.key) : -1;
+            return {
+              id: item.id,
+              name: item.name,
+              section: idx >= 0 ? (row.sections[idx] || '') : '',
+              dose: item.dose || '',
+            };
+          }),
+        };
+      });
+    },
+
     /* ── 강사 화면 데이터 ── */
     async adminData() {
       const s = load();
@@ -1978,6 +2253,7 @@ const api = (() => {
         onlineWeekKey: weekKeyOf(now),
         videos,
         videoPending: videos.filter((v) => v.status !== 'done').length,
+        movementVideos: movementVideoRows(s),
         payAccount: { ...s.settings.payAccount },
         payments: (s.payments || [])
           .slice()
