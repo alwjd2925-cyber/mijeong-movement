@@ -1213,6 +1213,55 @@ async function sessionId(api, { y, m, d, hh, mm }) {
     }
   }
 
+  /* ── [20] 수업 소개 — 핸드스탠드 100분 · 펑셔널 요가 포스터 ──────── */
+  console.log('\n[20] 수업 소개 (핸드스탠드 100분 · 펑셔널 요가 포스터)');
+  {
+    const { ctx } = makeContext({ now: NOW });
+    const info = vm.runInContext('({ CLASSES })', ctx);
+    const hs = info.CLASSES.find((c) => c.id === 'handstand');
+    const fn = info.CLASSES.find((c) => c.id === 'functional');
+
+    eq('핸드스탠드 무브먼트 시간 100분', hs.duration, '100분');
+    eq('CLASSES에서 바로 찾은 100분', info.CLASSES.find((c) => c.id === 'handstand').duration, '100분');
+    eq('수업 요일은 수·목·토·일', hs.slots.map((s) => s.dow), [3, 4, 6, 0]);
+
+    const minutes = hs.slots.map((s) => {
+      const [sh, sm] = s.start.split(':').map(Number);
+      const [eh, em] = s.end.split(':').map(Number);
+      return (eh * 60 + em) - (sh * 60 + sm);
+    });
+    eq('수업 시간표 4칸 모두 100분', minutes, [100, 100, 100, 100]);
+    eq('시작 시각은 그대로 (수·목 14:00 / 토·일 12:00)', hs.slots.map((s) => s.start), ['14:00', '14:00', '12:00', '12:00']);
+    eq('종료 시각도 100분에 맞춤', hs.slots.map((s) => s.end), ['15:40', '15:40', '13:40', '13:40']);
+    ok('소개 문구에 100분', hs.blurb.indexOf('100분') !== -1, hs.blurb);
+    ok('소개 문구에 90분이 남아 있지 않음', hs.blurb.indexOf('90분') === -1, hs.blurb);
+
+    /* 포스터 — 펑셔널 요가는 이번에 추가, 모닝 모빌리티는 그대로 */
+    eq('펑셔널 요가 포스터', fn.poster, './assets/functional-yoga.jpg');
+    ok('펑셔널 요가 포스터 alt', typeof fn.posterAlt === 'string' && fn.posterAlt.indexOf('펑셔널 요가') !== -1, fn.posterAlt);
+    eq('모닝 모빌리티 포스터 유지', info.CLASSES.find((c) => c.id === 'morning').poster, './assets/morning-mobility.jpg');
+
+    /* 포스터 파일은 기존 두 장과 같은 4:5(1080×1350) */
+    const jpegSize = (file) => {
+      const buf = fs.readFileSync(file);
+      let i = 2;
+      while (i < buf.length - 9) {
+        if (buf[i] !== 0xFF) { i += 1; continue; }
+        const marker = buf[i + 1];
+        if (marker >= 0xC0 && marker <= 0xCF && [0xC4, 0xC8, 0xCC].indexOf(marker) === -1) {
+          return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+        }
+        i += 2 + buf.readUInt16BE(i + 2);
+      }
+      return null;
+    };
+    ['handstand-movement.jpg', 'morning-mobility.jpg', 'functional-yoga.jpg'].forEach((name) => {
+      const file = path.join(__dirname, '..', 'assets', name);
+      const size = fs.existsSync(file) && fs.statSync(file).size > 40000 ? jpegSize(file) : null;
+      eq(`${name} — 4:5 포스터(1080×1350)`, size, { h: 1350, w: 1080 });
+    });
+  }
+
   /* ── 결과 ─────────────────────────────────────────────── */
   console.log(`\n${failures.length ? '✗ 실패' : '✓ 통과'} — ${passed}개 확인, ${failures.length}개 실패`);
   if (failures.length) {

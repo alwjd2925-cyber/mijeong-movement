@@ -55,6 +55,8 @@
     calMonth: null,     // 예약 달력에서 보고 있는 달 'YYYY-MM'
     calDay: null,       // 예약 달력에서 고른 날 'YYYY-MM-DD' (null = 전체 보기)
     access: null,       // 로그인한 수강생이 볼 수 있는 범위
+    studentView: null,  // 마지막으로 불러온 수강생 화면 값 (수업 카드 신청 버튼 상태)
+    classSig: '',       // 수업 카드 버튼을 다시 그릴 필요가 있는지 비교하는 값
     regOpen: false,     // 등록 신청 폼 열림
     regType: 'register',
     regClasses: [],     // 폼에서 고른 수업
@@ -621,6 +623,31 @@
       .join(' / ');
   }
 
+  /* 수업 카드의 신청 버튼 상태 — 로그인한 수강생이 그 수업을 이미 듣고 있으면 재등록,
+     확인 중인 신청이 있으면 그 신청을 가리킵니다. 나머지는 신규/추가 등록 신청입니다. */
+  function classCtaOf(classId) {
+    const v = UI.studentView;
+    if (!v) return { type: 'register', label: '등록 신청' };
+    /* 한 건이 확인 중이면 그동안은 새 신청을 받지 않습니다 (강사 승인 후에 열립니다) */
+    if (v.pending) return { type: 'pending', label: '신청 확인 중' };
+    const enrolled = (v.classes || []).indexOf(classId) !== -1;
+    if (enrolled) return { type: 'renewal', label: '재등록' };
+    return { type: 'register', label: '등록 신청' };
+  }
+
+  function classCtaHTML(classId) {
+    const cta = classCtaOf(classId);
+    const renewal = cta.type === 'renewal';
+    const cls = `class-cta-btn${renewal ? ' is-renewal' : ''}${cta.type === 'pending' ? ' is-pending' : ''}`;
+    return `
+          <div class="class-cta">
+            <button class="btn ${cls}" type="button" data-class-cta="${esc(classId)}" data-cta-type="${esc(cta.type)}"
+              aria-label="${esc(classNameOf(classId))} ${esc(cta.label)}">
+            ${esc(cta.label)} <span class="cta-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>`;
+  }
+
   function renderClasses() {
     const grid = $('#classGrid');
     if (!grid) return;
@@ -650,9 +677,64 @@
         <p class="class-when">${esc(cls.when || scheduleLabel(cls))}</p>
         ${classPriceHTML(cls)}
         <p class="class-blurb">${esc(cls.blurb)}</p>
-        <p class="class-note">${esc(cls.note)}</p>
+        <p class="class-note">${esc(cls.note)}</p>${classCtaHTML(cls.id)}
       </article>`;
     }).join('');
+  }
+
+  /* 수업 카드의 신청 버튼 → #booking 신규/재등록 신청서를 그 수업이 선택된 채로 엽니다. */
+  async function openClassRegistration(classId) {
+    const v = UI.studentView;
+    const cta = classCtaOf(classId);
+
+    /* 이미 확인 중인 신청이 있으면 새 신청 대신 그 신청을 보여 줍니다 */
+    if (cta.type === 'pending') {
+      await renderBooking();
+      const banner = $('#studentArea .state-banner.is-pending') || $('#studentArea .state-banner');
+      if (banner && banner.scrollIntoView) banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      toast('이미 확인 중인 신청이 있어요. 강사 확인 후 열립니다.');
+      return;
+    }
+
+    UI.regOpen = true;
+    UI.regType = cta.type === 'renewal' ? 'renewal' : 'register';
+    UI.regWarn = false;
+    UI.regPay = 'transfer';
+    UI.regProvider = 'card';
+    UI.regDepositor = (v && v.name) || '';
+    UI.regLivePasses = (v && v.passes) ? v.passes : {};
+    UI.regClasses = [classId];
+    UI.regPasses = {};
+    /* 만료·소진된 수강권만 같은 권종으로 미리 골라 둡니다 (살아 있는 권은 그대로 두고 새로 고름) */
+    const live = UI.regLivePasses[classId];
+    if (live && !live.active && live.type) UI.regPasses[classId] = String(live.type);
+
+    await renderBooking();
+    focusRegisterForm();
+  }
+
+  /* 신청서로 부드럽게 이동하고 폼에 포커스를 둡니다
+     폼이 화면보다 길어도 제목부터 보이도록 위쪽을 맞춥니다 (붙어 있는 상단 메뉴만큼 비켜 둠) */
+  function focusRegisterForm() {
+    const form = $('#registerForm');
+    if (!form) return;
+    if (form.scrollIntoView) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    try {
+      form.focus({ preventScroll: true });
+    } catch (err) {
+      form.focus();
+    }
+  }
+
+  /* 수업 카드 신청 버튼 (한 번만 등록 — 카드가 다시 그려져도 그대로 동작) */
+  function bindClassGrid() {
+    const grid = $('#classGrid');
+    if (!grid) return;
+    grid.addEventListener('click', async (event) => {
+      const btn = event.target.closest('[data-class-cta]');
+      if (!btn) return;
+      await openClassRegistration(btn.dataset.classCta);
+    });
   }
 
   /* ── booking ───────────────────────────────────────────── */
@@ -771,7 +853,8 @@
             <p class="state-caption">신규 등록은 수업을 하나 이상 골라 신청 · 두 개 이상도 함께 신청할 수 있어요</p>
             ${classChipsHTML({ classes: CLASS_ORDER })}
           </div>
-        </div>`;
+        </div>
+        ${UI.regOpen ? registerFormHTML(UI.regType) : registerButtonHTML('register')}`;
     }
 
     if (!v.access || !v.access.offline.length) {
@@ -817,7 +900,8 @@
       return `
         ${passListHTML(v)}
         ${recentPayHTML(v)}
-        ${v.pending ? '<p class="pass-note">재등록 요청 확인 중</p>' : ''}`;
+        ${v.pending ? '<p class="pass-note">재등록 요청 확인 중</p>' : ''}
+        ${UI.regOpen && !v.pending ? registerFormHTML(UI.regType) : ''}`;
     }
 
     if (v.status === 'pending') {
@@ -875,7 +959,8 @@
 
   /* ── 등록 신청 폼 ─────────────────────────────────────── */
   function registerButtonHTML(type, label, sub) {
-    if (UI.regOpen && UI.regType === type) return registerFormHTML(type);
+    /* 카드에서 신청서를 열었으면, 이 상태 영역에도 같은 신청서를 그립니다 */
+    if (UI.regOpen) return registerFormHTML(UI.regType);
     const main = label || (type === 'renewal' ? '재등록' : '등록');
     const second = sub || (type === 'renewal' ? '재등록 요청' : '신규 등록 신청');
     return `
@@ -890,9 +975,11 @@
     const livePasses = UI.regLivePasses || {};
 
     return `
-    <form class="reg-form" id="registerForm" novalidate>
+    <form class="reg-form" id="registerForm" novalidate tabindex="-1">
       <p class="reg-form-title">${type === 'renewal' ? '재등록 신청' : '등록 신청'}</p>
-      <p class="reg-form-sub">듣고 싶은 수업을 <b>한 개 이상</b> 골라 주세요. 두 개 이상 함께 신청할 수 있어요.</p>
+      <p class="reg-form-sub">${UI.studentId
+        ? '듣고 싶은 수업을 <b>한 개 이상</b> 골라 주세요. 두 개 이상 함께 신청할 수 있어요.'
+        : '듣고 싶은 수업을 골라 두고, 위의 <b>이름 + 수강 코드</b>로 로그인하면 신청할 수 있어요.'}</p>
 
       <div class="cls-picks cls-picks--student" data-reg-picks role="group" aria-label="신청할 수업">
         ${CLASSES.map((cls) => `
@@ -1230,6 +1317,24 @@
       }
     }
     applyAccess(student);
+    /* 수업 카드 버튼(등록 신청 / 재등록) — 로그인 · 수강 상태가 바뀌면 다시 그립니다 */
+    const sig = student
+      ? [
+        student.id,
+        student.status,
+        (student.classes || []).join(','),
+        Object.keys(student.passes || {}).map((id) => {
+          const pv = student.passes[id];
+          return `${id}:${pv.type}:${pv.total}-${pv.remaining}:${pv.active ? 1 : 0}`;
+        }).join(','),
+        student.pending ? (student.pending.classes || []).join(',') : '',
+      ].join('|')
+      : 'guest';
+    UI.studentView = student;
+    if (UI.classSig !== sig) {
+      UI.classSig = sig;
+      renderClasses();
+    }
 
     /* 계좌이체 안내에 쓰는 입금 계좌 — 강사가 바꾼 값이 바로 반영됩니다 */
     try {
@@ -1309,6 +1414,21 @@
       }
 
       const actionBtn = event.target.closest('[data-action]');
+      if (actionBtn && !UI.studentId) {
+        /* 비로그인 — 수업을 고르지 않은 빈 신청서를 열고, 로그인 안내를 함께 보여 줍니다 */
+        UI.regOpen = true;
+        UI.regType = 'register';
+        UI.regWarn = false;
+        UI.regPay = 'transfer';
+        UI.regProvider = 'card';
+        UI.regDepositor = '';
+        UI.regLivePasses = {};
+        UI.regClasses = [];
+        UI.regPasses = {};
+        await renderBooking();
+        focusRegisterForm();
+        return;
+      }
       if (actionBtn && UI.studentId) {
         const type = actionBtn.dataset.action;
         const v = await api.getStudent(UI.studentId);
@@ -1428,7 +1548,16 @@
       const form = event.target.closest('#registerForm');
       if (!form) return;
       event.preventDefault();
-      if (!UI.studentId) return;
+      if (!UI.studentId) {
+        toast('이름과 수강 코드로 로그인하면 신청할 수 있어요.', true);
+        const login = $('#loginForm');
+        if (login) {
+          if (login.scrollIntoView) login.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const nameInput = login.querySelector('input[name="name"]');
+          if (nameInput) nameInput.focus();
+        }
+        return;
+      }
 
       const type = UI.regType;
       const picked = UI.regClasses.slice();
@@ -3417,6 +3546,7 @@
     renderClasses();
     renderSequence();
     renderDemoSwitch();
+    bindClassGrid();
     bindBooking();
     bindOnline();
     bindAdmin();

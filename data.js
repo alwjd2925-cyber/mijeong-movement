@@ -168,18 +168,18 @@ const CLASSES = [
     en: 'Handstand Movement',
     icon: 'handstand',
     mode: 'offline',
-    duration: '90분',
+    duration: '100분',
     slots: [
-      { dow: 3, start: '14:00', end: '15:30' },
-      { dow: 4, start: '14:00', end: '15:30' },
-      { dow: 6, start: '12:00', end: '13:30' },
-      { dow: 0, start: '12:00', end: '13:30' },
+      { dow: 3, start: '14:00', end: '15:40' },
+      { dow: 4, start: '14:00', end: '15:40' },
+      { dow: 6, start: '12:00', end: '13:40' },
+      { dow: 0, start: '12:00', end: '13:40' },
     ],
     /* 수업 소개 카드 그림 — 포스터 사진(4:5). 없으면 SVG 일러스트로 그립니다. */
     poster: './assets/handstand-movement.jpg',
     posterAlt: '핸드스탠드 무브먼트 포스터 — 거꾸로 홀로서기 프로젝트, 매주 수·목·토·일 오후 클래스',
     blurb:
-      '벽에서 시작해 손으로 서는 감각까지. 90분 동안 어깨와 손목의 정렬을 만들고, kick up · straddle · split을 단계별로 쌓아갑니다. 같은 시간에 비기너와 인터미디엇이 각자의 순서로 움직입니다.',
+      '벽에서 시작해 손으로 서는 감각까지. 100분 동안 어깨와 손목의 정렬을 만들고, kick up · straddle · split을 단계별로 쌓아갑니다. 같은 시간에 비기너와 인터미디엇이 각자의 순서로 움직입니다.',
     note: 'P3 · Beginner / Intermediate',
   },
   {
@@ -190,6 +190,9 @@ const CLASSES = [
     mode: 'offline',
     duration: '60분',
     slots: [{ dow: 0, start: '10:00', end: '11:00' }],
+    /* 수업 소개 카드 그림 — 포스터 사진(4:5). 없으면 SVG 일러스트로 그립니다. */
+    poster: './assets/functional-yoga.jpg',
+    posterAlt: '펑셔널 요가 포스터 — 100세 시대 관절 튼튼 프로젝트, 매주 토·일 오전 클래스',
     blurb:
       '일상에서 쓰는 움직임을 기준으로 몸을 정리하는 60분. 호흡에 맞춰 골반과 어깨의 움직임을 넓히고, 힘을 쓰는 방향을 다시 잡습니다. 일요일 아침을 여는 수업입니다.',
     note: '호흡 · 골반 · 어깨',
