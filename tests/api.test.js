@@ -999,11 +999,96 @@ async function sessionId(api, { y, m, d, hh, mm }) {
   }
 
   /* ────────────────────────────────────────────────────────
-     18. 결제 방식 — 계좌이체 · 카드·간편결제
+     18. 코칭 노트 강사 코멘트 — 저장 · 수정 · 삭제 · 노출 범위
      ──────────────────────────────────────────────────────── */
-  console.log('\n[18] 결제 방식');
+  console.log('\n[18] 코칭 노트 강사 코멘트');
   {
-    /* 18-1. 기본 입금 계좌 · 강사 저장 */
+    const withCoaching = (extra) => {
+      const students = baseStudents(NOW).concat([{
+        id: 'st_coaching', name: '정민아', code: 'MJ-1125', classes: ['coaching'], passes: {},
+        createdAt: new Date(NOW - 20 * DAY).toISOString(),
+      }]);
+      return Object.assign({ version: 3, students, requests: [], bookings: [] }, extra || {});
+    };
+    const wk = (() => {
+      const d = new Date(NOW);
+      const back = (d.getDay() + 6) % 7;
+      const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - back);
+      const p = (n) => String(n).padStart(2, '0');
+      return `${mon.getFullYear()}-${p(mon.getMonth() + 1)}-${p(mon.getDate())}`;
+    })();
+
+    /* 예시 코멘트 시드 — 최근 주차 1건 코멘트, 나머지는 대기 */
+    {
+      const seeded = makeContext({ now: NOW, state: withCoaching() });
+      await seeded.api.setOnlineNote('st_coaching', 'coaching', wk, '벽 아래 홀드 20초가 아직 힘들어요.\n손목 들기를 먼저 하면 조금 편합니다.');
+      const rows = (await seeded.api.adminData()).coachNotes;
+      ok('시드 후 코칭 노트가 강사 목록에 모임', rows.length >= 1, String(rows.length));
+      ok('코칭 노트에 수강생 이름', rows.every((r) => r.studentId === 'st_coaching' && r.studentName === '정민아'));
+      eq('모닝 모빌리티 노트는 강사 코칭 목록에 없음', rows.every((r) => r.programId === 'coaching'), true);
+    }
+
+    const { api, read } = makeContext({ now: NOW, state: withCoaching({ online: {} }) });
+    await api.setOnlineNote('st_coaching', 'coaching', wk, '벽 아래 홀드 20초가 아직 힘들어요.\n손목 들기를 먼저 하면 조금 편합니다.');
+
+    /* 검증 */
+    await throws('빈 코멘트는 막힘', () => api.setCoachComment('st_coaching', 'coaching', wk, '   '), /코멘트/);
+    await throws('2,000자 초과는 막힘', () => api.setCoachComment('st_coaching', 'coaching', wk, 'x'.repeat(2001)), /2000/);
+    await throws('없는 주차는 막힘', () => api.setCoachComment('st_coaching', 'coaching', '2020-01-06', '좋아요'), /노트/);
+    await throws('없는 수강생은 막힘', () => api.setCoachComment('nobody', 'coaching', wk, '좋아요'), /수강생/);
+    await throws('모닝 모빌리티에는 달 수 없음', () => api.setCoachComment('st_only_morn', 'morning', wk, '좋아요'), /핸드스탠드 온라인 코칭/);
+    await throws('코칭을 안 듣는 수강생은 막힘', () => api.setCoachComment('st_only_off', 'coaching', wk, '좋아요'), /핸드스탠드 온라인 코칭/);
+
+    /* 저장 — 줄바꿈 유지 · 시각 기록 */
+    const longText = '민아님, 이번 주 노트 잘 읽었어요.\n\n① 손목 들기 20회\n② 벽 아래 홀드 15초 × 4세트\n\n세트 사이에는 40초를 꼭 쉬어 주세요.';
+    const saved = await api.setCoachComment('st_coaching', 'coaching', wk, `  ${longText}  `);
+    eq('코멘트 앞뒤 공백만 정리', saved.coachComment, longText);
+    ok('저장 시각 기록', !!saved.coachCommentAt && !Number.isNaN(new Date(saved.coachCommentAt).getTime()));
+    eq('수강생 노트는 그대로', saved.note, '벽 아래 홀드 20초가 아직 힘들어요.\n손목 들기를 먼저 하면 조금 편합니다.');
+    ok('저장소에 남음', !!read().online.st_coaching.coaching[wk].coachComment);
+
+    /* 수정 — 다시 저장하면 같은 자리에서 바뀜 */
+    const edited = await api.setCoachComment('st_coaching', 'coaching', wk, '수정된 피드백 — 15초 × 4세트부터.');
+    eq('다시 저장하면 수정', edited.coachComment, '수정된 피드백 — 15초 × 4세트부터.');
+    eq('노트 한 칸에 코멘트 하나', Object.keys(read().online.st_coaching.coaching).length, 1);
+
+    /* 강사 화면 데이터 — 전체 · 대기 · 완료 */
+    const admin = await api.adminData();
+    eq('강사 목록 코칭 노트 1건', admin.coachNotes.length, 1);
+    eq('코멘트완료면 대기 0건', admin.coachPending, 0);
+    eq('강사 목록에 코멘트', admin.coachNotes[0].comment, '수정된 피드백 — 15초 × 4세트부터.');
+    eq('주차 키', admin.coachNotes[0].weekKey, wk);
+    ok('동작 수 요약', typeof admin.coachNotes[0].checked === 'number' && admin.coachNotes[0].total > 0);
+
+    /* 수강생이 보는 기록에도 코멘트가 실립니다 */
+    const records = await api.getOnline('st_coaching');
+    eq('수강생 기록에 코멘트', records.coaching[wk].coachComment, '수정된 피드백 — 15초 × 4세트부터.');
+
+    /* 모닝 모빌리티 노트에는 코멘트가 붙지 않습니다 */
+    await throws('모닝 노트 코멘트 삭제도 막힘', () => api.deleteCoachComment('st_only_morn', 'morning', wk), /핸드스탠드 온라인 코칭/);
+
+    /* 삭제 — 코멘트만 지우고 노트는 남김 */
+    const afterDel = await api.deleteCoachComment('st_coaching', 'coaching', wk);
+    eq('삭제하면 코멘트 비움', afterDel.coachComment, undefined);
+    eq('노트는 그대로 남음', afterDel.note, '벽 아래 홀드 20초가 아직 힘들어요.\n손목 들기를 먼저 하면 조금 편합니다.');
+    await throws('없는 코멘트 삭제는 막힘', () => api.deleteCoachComment('st_coaching', 'coaching', wk), /찾을 수 없/);
+    const afterDelAdmin = await api.adminData();
+    eq('삭제 후 대기 1건', afterDelAdmin.coachPending, 1);
+
+    /* 새로고침해도 그대로 */
+    await api.setCoachComment('st_coaching', 'coaching', wk, '다시 저장한 피드백');
+    const again = makeContext({ now: NOW, state: read() });
+    const reloaded = await again.api.getOnline('st_coaching');
+    eq('다시 열어도 코멘트 유지', reloaded.coaching[wk].coachComment, '다시 저장한 피드백');
+    eq('다시 열어도 노트 유지', reloaded.coaching[wk].note, '벽 아래 홀드 20초가 아직 힘들어요.\n손목 들기를 먼저 하면 조금 편합니다.');
+  }
+
+  /* ────────────────────────────────────────────────────────
+     19. 결제 방식 — 계좌이체 · 카드·간편결제
+     ──────────────────────────────────────────────────────── */
+  console.log('\n[19] 결제 방식');
+  {
+    /* 19-1. 기본 입금 계좌 · 강사 저장 */
     {
       const { api, read } = makeContext({ now: NOW, state: baseState(NOW) });
       eq('기본 계좌 — 신한', (await api.payAccount()).bank, '신한');
