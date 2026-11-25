@@ -3010,6 +3010,10 @@ dialog.modal--pay {
   color: var(--ink-70);
 }
 
+.pay-list li:last-child {
+  border-bottom: 0;
+}
+
 .pay-list .pay-list-sub {
   font-size: 9.5px;
   color: var(--ink-45);
