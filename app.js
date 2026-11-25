@@ -73,6 +73,9 @@
     noticeDeleteArmed: null, // 삭제를 한 번 눌러 확인을 기다리는 공지 id
     videoDeleteArmed: null, // 삭제를 한 번 눌러 확인을 기다리는 코칭 영상 id
     videoFilter: 'all',     // 강사 모드 코칭 영상 필터 (all | pending | done)
+    mvTab: 'morning',       // 강사 모드 동작 영상 분류 (morning | coaching | p3)
+    mvEdit: null,           // 영상 등록·수정 중인 동작 id
+    mvDeleteArmed: null,    // 삭제를 한 번 눌러 확인을 기다리는 동작 id
   };
 
   /* ── 수업별 접근 제어 ──────────────────────────────────── */
@@ -2511,7 +2514,18 @@
     return match ? match[1] : '';
   }
 
-  function openVideo(id) {
+  /* 오픈한 영상 모달의 objectURL — 닫을 때 놓아 줍니다 */
+  let videoModalUrl = null;
+
+  function clearVideoModalUrl() {
+    if (videoModalUrl && typeof URL !== 'undefined' && URL.revokeObjectURL) {
+      URL.revokeObjectURL(videoModalUrl);
+    }
+    videoModalUrl = null;
+  }
+
+  /* 동작 영상 모달 — 강사가 올린 영상 파일 > 유튜브(등록 > data.js 기본) > 준비 중 */
+  async function openVideo(id) {
     const entry = VIDEO_INDEX.get(id);
     const modal = $('#videoModal');
     if (!entry || !modal) return;
@@ -2520,29 +2534,63 @@
     const frame = $('#videoFrame');
     const link = $('#videoLink');
     const hint = $('#videoHint');
-    const yt = youtubeId(item.video);
 
     $('#videoTitle').textContent = item.name;
     $('#videoLevel').textContent = group;
+    link.hidden = true;
+    hint.textContent = '';
 
-    if (yt) {
+    let video = null;
+    try {
+      video = await api.resolveMovementVideo(id);
+    } catch (err) {
+      video = null;
+    }
+
+    clearVideoModalUrl();
+    const tone = [item.dose, ''].filter(Boolean).join(' · ');
+
+    if (video && video.source === 'file') {
+      if (video.demoFile) {
+        /* 시안용 샘플 — mp4 · webm 두 소스를 이미 들고 있습니다 */
+        const webm = video.demoFile.replace(/\.mp4$/i, '.webm');
+        frame.innerHTML = `<video controls playsinline preload="metadata" aria-label="${esc(item.name)} 시범 영상">
+          <source src="${esc(video.demoFile)}" type="video/mp4">
+          <source src="${esc(webm)}" type="video/webm">
+        </video>`;
+      } else {
+        const blob = await videoGet(`mv:${id}`);
+        const src = blob && typeof URL !== 'undefined' && URL.createObjectURL ? URL.createObjectURL(blob) : '';
+        if (src) {
+          videoModalUrl = src;
+          frame.innerHTML = `<video controls playsinline preload="metadata" src="${esc(src)}" aria-label="${esc(item.name)} 시범 영상"></video>`;
+        } else {
+          frame.innerHTML = `
+            <div class="video-empty">
+              <strong>영상을 불러오지 못했어요</strong>
+              <p>${esc(item.name)} · 이 브라우저에 저장된 파일이 없습니다.<br>강사 모드에서 영상을 다시 올려 주세요.</p>
+            </div>`;
+        }
+      }
+      hint.textContent = [tone, video.demo ? '샘플 영상' : (video.fileName || '강사 등록 영상')].filter(Boolean).join(' · ');
+    } else if (video && video.source === 'youtube' && video.youtubeId) {
+      const yt = video.youtubeId;
       frame.innerHTML = `<iframe src="https://www.youtube.com/embed/${encodeURIComponent(yt)}?autoplay=1&rel=0"
         title="${esc(item.name)} 영상" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowfullscreen></iframe>`;
-      link.href = `https://www.youtube.com/watch?v=${encodeURIComponent(yt)}`;
+      link.href = video.watchUrl || `https://www.youtube.com/watch?v=${encodeURIComponent(yt)}`;
       link.hidden = false;
-      hint.textContent = `동작 · ${item.dose}`;
+      hint.textContent = [tone, video.registered ? '강사 등록 영상' : ''].filter(Boolean).join(' · ');
     } else {
       frame.innerHTML = `
         <div class="video-empty">
           <strong>영상 준비 중입니다</strong>
-          <p>${esc(item.name)} · ${esc(item.dose)}<br>유튜브 링크를 연결하면 이 자리에서 바로 재생됩니다.</p>
+          <p>${esc(item.name)} · ${esc(item.dose)}<br>강사가 시범 영상을 올리면 이 자리에서 바로 재생됩니다.</p>
         </div>`;
-      link.hidden = true;
-      hint.textContent = '링크는 data.js의 video 항목에서 연결합니다.';
+      hint.textContent = '아직 등록된 시범 영상이 없어요.';
     }
 
-    modal.showModal();
+    if (!modal.open) modal.showModal();
   }
 
   function closeVideo() {
@@ -2550,6 +2598,7 @@
     if (!modal) return;
     const frame = $('#videoFrame');
     if (frame) frame.innerHTML = '';
+    clearVideoModalUrl();
     modal.close();
   }
 
@@ -2791,6 +2840,146 @@
     await hydrateVideos(box, 'admin');
   }
 
+  /* ── 수업 동작 시범 영상 (강사 모드) ──────────────────────
+     동작마다 영상 파일 또는 유튜브 하나를 등록합니다.
+     파일 Blob은 IndexedDB('mv:<동작 id>')에, 등록 내용은 data.js 상태에 남습니다. */
+  let ADMIN_MV = {};
+
+  const MV_STATUS_LABEL = { none: '미등록', file: '영상 파일', youtube: '유튜브' };
+
+  function mvCounts(videos) {
+    const groups = api.movementGroups();
+    const total = groups.reduce((n, g) => n + g.movements.length, 0);
+    return { done: Object.keys(videos || {}).length, total };
+  }
+
+  function mvFormHTML(row, entry) {
+    const yt = entry && entry.source === 'youtube' ? entry.youtubeId : '';
+    const fileName = entry && entry.source === 'file' && !entry.demo ? entry.fileName : '';
+    return `
+      <form class="mv-form" data-mv-form="${esc(row.id)}" novalidate>
+        <label class="cv-file">
+          <input type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" data-mv-file aria-label="${esc(row.name)} 영상 파일">
+          <span class="cv-file-btn">영상 파일 선택</span>
+          <span class="cv-file-name" data-mv-file-name>${fileName ? esc(fileName) : 'mp4 · mov · webm · 80MB까지'}</span>
+        </label>
+        <input class="cv-input" type="text" data-mv-youtube value="${esc(yt)}"
+          placeholder="또는 유튜브 주소 · 영상 ID" aria-label="${esc(row.name)} 유튜브 주소">
+        <div class="mv-form-foot">
+          <span class="mv-form-hint">${entry ? '새로 저장하면 기존 영상을 바꿉니다.' : '파일 또는 유튜브 주소 하나만 넣어 주세요.'}</span>
+          <div class="mv-form-acts">
+            <button class="btn-mini" type="button" data-mv-cancel>취소</button>
+            <button class="btn-mini btn-mini--butter" type="submit" data-mv-save>저장</button>
+          </div>
+        </div>
+      </form>`;
+  }
+
+  function mvCardHTML(row, entry) {
+    const id = row.id;
+    const state = entry ? entry.source : 'none';
+    const editing = UI.mvEdit === id;
+    const meta = [row.section, row.dose];
+    if (entry) {
+      if (entry.source === 'file') {
+        meta.push(entry.demo ? '샘플 영상' : (entry.fileName || '영상 파일'));
+        const size = bytesText(entry.fileSize);
+        if (size) meta.push(size);
+      } else {
+        meta.push(entry.youtubeId ? `youtu.be/${entry.youtubeId}` : '유튜브');
+      }
+    }
+
+    return `
+      <li class="mv-card${editing ? ' is-editing' : ''}" data-mv-card="${esc(id)}">
+        <div class="mv-top">
+          <b class="mv-name">${esc(row.name)}</b>
+          <span class="mv-chip is-${state}">${MV_STATUS_LABEL[state]}</span>
+        </div>
+        <p class="mv-meta">${esc(meta.filter(Boolean).join(' · '))}</p>
+        ${editing ? mvFormHTML(row, entry) : `
+        <div class="mv-acts">
+          <button class="btn-mini" type="button" data-mv-edit="${esc(id)}">${entry ? '영상 수정' : '영상 등록'}</button>
+          <button class="btn-mini" type="button" data-mv-preview="${esc(id)}"${entry ? '' : ' disabled'}>미리보기</button>
+          ${entry ? `<button class="btn-mini btn-mini--x" type="button" data-mv-del="${esc(id)}">${UI.mvDeleteArmed === id ? '한 번 더' : '삭제'}</button>` : ''}
+        </div>`}
+      </li>`;
+  }
+
+  function movementVideoAdminHTML(videos) {
+    const list = videos || {};
+    const groups = api.movementGroups();
+    const tab = groups.some((g) => g.key === UI.mvTab) ? UI.mvTab : groups[0].key;
+    UI.mvTab = tab;
+    const group = groups.find((g) => g.key === tab) || groups[0];
+    const { done, total } = mvCounts(list);
+    const tabs = groups.map((g) => `
+      <button class="mv-tab${g.key === tab ? ' is-active' : ''}" type="button" role="tab"
+        aria-selected="${g.key === tab ? 'true' : 'false'}" data-mv-tab="${esc(g.key)}">
+        ${esc(g.label)}<span>${g.movements.length}</span>
+      </button>`).join('');
+
+    /* P3 탭은 워밍업 · Beginner · Intermediate 를 소제목으로 나눕니다 */
+    let lastSection = '';
+    const rows = group.movements.map((row) => {
+      let head = '';
+      if (group.key === 'p3' && row.section && row.section !== lastSection) {
+        head = `<li class="mv-group">${esc(row.section)}</li>`;
+        lastSection = row.section;
+      }
+      return head + mvCardHTML(row, list[row.id] || null);
+    }).join('');
+
+    return `
+      <div class="mv-tabs" role="tablist" aria-label="수업 동작 영상 분류">${tabs}</div>
+      <p class="mv-sum">등록 <b>${done}</b> / ${total} 동작 · ${esc(group.label)} ${group.movements.length}개</p>
+      <ul class="mv-list">${rows}</ul>`;
+  }
+
+  /* 동작 영상 섹션만 다시 그립니다 */
+  async function renderAdminMovementVideos() {
+    const box = document.querySelector('#adminBody [data-mv-box]');
+    if (!box) return;
+    const videos = await api.listMovementVideos();
+    ADMIN_MV = videos;
+    box.innerHTML = movementVideoAdminHTML(videos);
+    const badge = document.querySelector('#adminBody [data-mv-badge]');
+    const { done, total } = mvCounts(videos);
+    if (badge) badge.textContent = `등록 ${done} / ${total}`;
+  }
+
+  /* 동작 영상 저장 — 파일은 IndexedDB로, 등록 내용은 api로 */
+  async function saveMovementVideoForm(form) {
+    const id = form.dataset.mvForm;
+    const fileEl = form.querySelector('[data-mv-file]');
+    const ytEl = form.querySelector('[data-mv-youtube]');
+    const file = fileEl && fileEl.files && fileEl.files[0] ? fileEl.files[0] : null;
+    const yt = ytEl ? ytEl.value : '';
+    const saveBtn = form.querySelector('[data-mv-save]');
+    if (!file && !String(yt).trim()) {
+      toast('영상 파일이나 유튜브 주소 중 하나를 넣어 주세요.', true);
+      return;
+    }
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      const saved = await api.saveMovementVideo(id, {
+        youtubeId: yt,
+        file: file ? { name: file.name, size: file.size, type: file.type } : null,
+      });
+      if (file) await videoPut(`mv:${id}`, file);
+      else await videoErase(`mv:${id}`);
+      UI.mvEdit = null;
+      UI.mvDeleteArmed = null;
+      await renderAdminMovementVideos();
+      toast(saved.source === 'file'
+        ? `${saved.name} 시범 영상을 등록했어요 · 영상 파일`
+        : `${saved.name} 시범 영상을 등록했어요 · 유튜브`);
+    } catch (err) {
+      if (saveBtn) saveBtn.disabled = false;
+      toast(err.message || '시범 영상을 저장하지 못했어요.', true);
+    }
+  }
+
   /* 수강권 선택지 — 그 수업으로 살 수 있는 종류만 */
   function passOptionList(selected, options) {
     const opts = options || {};
@@ -2974,6 +3163,8 @@
     if (!body) return;
     const data = await api.adminData();
     ADMIN_DATA = data;
+    ADMIN_MV = data.movementVideos || {};
+    const mv = mvCounts(ADMIN_MV);
 
     const requests = data.pending.length
       ? data.pending.map((req) => {
@@ -3032,6 +3223,12 @@
       <section class="admin-block" id="adminVideos">
         <div class="admin-h"><h4>코칭 영상 피드백 / video</h4><span data-video-badge>${adminVideoBadgeHTML(data.videoPending)}</span></div>
         <div data-admin-video-box>${adminVideosHTML(data.videos)}</div>
+      </section>
+
+      <section class="admin-block" id="adminMovementVideos">
+        <div class="admin-h"><h4>수업 동작 영상 / demo video</h4><span data-mv-badge>등록 ${mv.done} / ${mv.total}</span></div>
+        <p class="grant-hint">동작마다 시범 영상을 올려 두면 수강생이 「영상 보기」에서 바로 재생합니다. 영상 파일(mp4 · mov · webm · 80MB까지)이나 유튜브 주소 중 하나를 넣어 주세요. 온라인 코칭 동작은 P3 시퀀스와 같은 동작이라 한 번 등록하면 둘 다 재생됩니다. 지금은 이 브라우저에만 저장됩니다.</p>
+        <div data-mv-box>${movementVideoAdminHTML(ADMIN_MV)}</div>
       </section>
 
       <section class="admin-block">
@@ -3113,6 +3310,8 @@
         UI.resetArmed = false;
         UI.noticeEditing = null;
         UI.noticeDeleteArmed = null;
+        UI.mvEdit = null;
+        UI.mvDeleteArmed = null;
         await renderAdmin();
         modal.showModal();
       });
@@ -3120,6 +3319,24 @@
 
     const body = $('#adminBody');
     body.addEventListener('change', async (event) => {
+      /* 동작 영상 — 고른 파일 이름·용량을 바로 보여 줍니다 */
+      if (event.target.closest('[data-mv-file]')) {
+        const input = event.target.closest('[data-mv-file]');
+        const label = document.querySelector('[data-mv-file-name]');
+        const file = input.files && input.files[0];
+        if (label) {
+          if (file) {
+            const size = bytesText(file.size);
+            label.textContent = `${file.name}${size ? ` · ${size}` : ''}`;
+            label.classList.add('is-picked');
+          } else {
+            label.textContent = 'mp4 · mov · webm · 80MB까지';
+            label.classList.remove('is-picked');
+          }
+        }
+        return;
+      }
+
       const studentSelect = event.target.closest('#bookStudent');
       if (studentSelect) {
         UI.adminStudent = studentSelect.value;
@@ -3209,6 +3426,13 @@
         return;
       }
 
+      const mvForm = event.target.closest('[data-mv-form]');
+      if (mvForm) {
+        event.preventDefault();
+        await saveMovementVideoForm(mvForm);
+        return;
+      }
+
       const form = event.target.closest('[data-video-comment]');
       if (!form) return;
       event.preventDefault();
@@ -3257,6 +3481,66 @@
     });
 
     body.addEventListener('click', async (event) => {
+      /* 수업 동작 영상 — 분류 탭 · 등록/수정 열기 · 미리보기 · 삭제 */
+      const mvTab = event.target.closest('[data-mv-tab]');
+      if (mvTab) {
+        UI.mvTab = mvTab.dataset.mvTab;
+        UI.mvEdit = null;
+        UI.mvDeleteArmed = null;
+        await renderAdminMovementVideos();
+        return;
+      }
+
+      const mvEdit = event.target.closest('[data-mv-edit]');
+      if (mvEdit) {
+        UI.mvEdit = mvEdit.dataset.mvEdit;
+        UI.mvDeleteArmed = null;
+        await renderAdminMovementVideos();
+        const card = document.querySelector(`[data-mv-card="${UI.mvEdit}"]`);
+        const input = card ? card.querySelector('[data-mv-youtube]') : null;
+        if (input) input.focus();
+        return;
+      }
+
+      const mvCancel = event.target.closest('[data-mv-cancel]');
+      if (mvCancel) {
+        UI.mvEdit = null;
+        await renderAdminMovementVideos();
+        return;
+      }
+
+      const mvPreview = event.target.closest('[data-mv-preview]');
+      if (mvPreview) {
+        await openVideo(mvPreview.dataset.mvPreview);
+        return;
+      }
+
+      const mvDel = event.target.closest('[data-mv-del]');
+      if (mvDel) {
+        const id = mvDel.dataset.mvDel;
+        if (UI.mvDeleteArmed !== id) {
+          UI.mvDeleteArmed = id;
+          mvDel.textContent = '한 번 더';
+          return;
+        }
+        UI.mvDeleteArmed = null;
+        mvDel.disabled = true;
+        const card = mvDel.closest('[data-mv-card]');
+        const nameEl = card ? card.querySelector('.mv-name') : null;
+        const name = nameEl ? nameEl.textContent : '동작';
+        try {
+          await api.deleteMovementVideo(id);
+          await videoErase(`mv:${id}`);
+          if (UI.mvEdit === id) UI.mvEdit = null;
+          await renderAdminMovementVideos();
+          toast(`${name} 시범 영상을 삭제했어요.`);
+        } catch (err) {
+          mvDel.disabled = false;
+          toast(err.message || '시범 영상을 삭제하지 못했어요.', true);
+        }
+        return;
+      }
+
       /* 코칭 영상 필터 */
       const filterBtn = event.target.closest('[data-video-filter]');
       if (filterBtn) {
@@ -3452,6 +3736,7 @@
       videoModal.addEventListener('close', () => {
         const frame = $('#videoFrame');
         if (frame) frame.innerHTML = '';
+        clearVideoModalUrl();
       });
     }
 
@@ -3460,7 +3745,11 @@
         if (event.target.closest('[data-close-admin]') || event.target === adminModal) adminModal.close();
       });
       /* 닫을 때는 강사 화면에서 만든 영상 URL을 놓아 둡니다 */
-      adminModal.addEventListener('close', () => releaseVideoUrls('admin'));
+      adminModal.addEventListener('close', () => {
+        releaseVideoUrls('admin');
+        const vm = $('#videoModal');
+        if (vm && vm.open) closeVideo();
+      });
     }
 
     document.addEventListener('click', (event) => {
