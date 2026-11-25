@@ -392,7 +392,7 @@
     const transferHTML = `
       <div class="pay-account">
         <p class="pa-label">입금 계좌</p>
-        <p class="pa-sum"><b>${esc(acct.bank)}</b> ${esc(acct.number)} <span>예금주 ${esc(acct.holder)}</span></p>
+        <p class="pa-sum"><b>${esc(acct.bank)}</b> ${esc(acct.number)} <span>예금주&nbsp;${esc(acct.holder)}</span></p>
         <div class="pa-acts">
           <button class="btn-mini" type="button" data-copy-account="${esc(acct.number)}">계좌번호 복사</button>
           ${acct.link ? `<a class="btn-mini" href="${esc(acct.link)}" target="_blank" rel="noopener">송금 링크 열기 ↗</a>` : ''}
