@@ -1247,6 +1247,153 @@ table.track-table tbody th.td-ex {
   box-shadow: inset 0 -0.5em 0 var(--butter);
 }
 
+/* ── 코칭 노트 강사 코멘트 (편지) ────────────────────────
+   COACHING NOTE 아래에 붙는 긴 피드백. 종이 느낌의 밝은 면,
+   얇은 옐로 왼쪽 선, 넉넉한 행간(1.75)으로 편지처럼 읽힙니다. */
+.coach-note {
+  position: relative;
+  margin-top: 12px;
+  padding: 16px 16px 18px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--butter);
+  border-radius: var(--radius-md);
+  background: #fdfdf4;      /* 아주 옅은 종이 톤 */
+  box-shadow: var(--shadow);
+}
+
+.cn-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cn-from {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--lime-ink);
+}
+
+.cn-from i {
+  font-style: normal;
+  color: var(--ink-45);
+  margin: 0 1px;
+}
+
+.cn-date {
+  flex: none;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-45);
+  white-space: nowrap;
+}
+
+.cn-rule {
+  height: 1px;
+  margin: 9px 0 12px;
+  background: rgba(20, 21, 24, 0.13);
+}
+
+.cn-body {
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--ink);
+  white-space: pre-wrap;       /* 문단·줄바꿈 그대로 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cn-sign {
+  margin-top: 14px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--ink-45);
+}
+
+.coach-note.is-waiting {
+  border-left-color: var(--line-strong);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.coach-note.is-waiting .cn-from {
+  color: var(--ink-45);
+}
+
+.cn-wait {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-70);
+  word-break: keep-all;
+}
+
+.cn-wait span {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--ink-45);
+}
+
+/* 내 노트 기록 — 주차 카드 아래로 이어지는 코멘트 */
+.note-list > li {
+  min-width: 0;
+}
+
+.nc-letter {
+  margin-top: 6px;
+  padding: 11px 13px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--butter);
+  border-radius: var(--radius-sm);
+  background: #fdfdf4;
+}
+
+.nc-letter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lime-ink);
+}
+
+.nc-letter-date {
+  flex: none;
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--ink-45);
+  font-variant-numeric: tabular-nums;
+}
+
+.nc-letter-body {
+  margin-top: 7px;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--ink-70);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.nc-wait {
+  display: inline-block;
+  margin: 7px 0 0 2px;
+  padding: 3px 9px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 999px;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-45);
+  background: var(--surface);
+}
+
 /* ── 코칭 영상 (수강생 업로드 · 강사 피드백) ─────────────── */
 .coach-video {
   margin-top: 18px;
@@ -1678,6 +1825,96 @@ table.track-table tbody th.td-ex {
 
 .cv-comment-form .cv-comment-label {
   color: var(--ink-45);
+}
+
+/* 강사 모드 — 코칭 노트 피드백 */
+.coach-admin-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.coach-admin-card {
+  min-width: 0;
+  padding: 13px 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.cac-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cac-week {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-45);
+  white-space: nowrap;
+}
+
+.cac-meta {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--ink-45);
+}
+
+.cac-note {
+  margin-top: 9px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.cac-label {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--ink-45);
+}
+
+.cac-note-body {
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-70);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cac-form {
+  display: grid;
+  gap: 7px;
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px dashed var(--dark-line);
+}
+
+.cac-form .cv-comment-label {
+  color: var(--ink-45);
+}
+
+/* 긴 피드백을 쓰기 넉넉한 입력란 — 사이트 입력 글자 크기(14.5px) 유지 */
+.cac-area {
+  min-height: 172px;
+  font-size: 14.5px;
+  line-height: 1.75;
+}
+
+.cac-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
 }
 
 /* 강사 모드: 온라인 체크 요약 */

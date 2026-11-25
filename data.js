@@ -746,11 +746,99 @@ const api = (() => {
             },
             note: '벽 아래 홀드 20초가 아직 힘들어요. 손목 들기를 먼저 하고 나면 조금 편합니다.',
             updatedAt: iso(addDays(now, -2)),
+            ...demoCoachComment(now),
           },
         },
       },
     };
     return state;
+  }
+
+  /* ── 주간 코칭 노트 강사 코멘트 ────────────────────────────
+     핸드스탠드 온라인 코칭(coaching)의 주간 COACHING NOTE 아래에
+     강사가 댓글처럼 길게 남기는 피드백입니다. 노트 한 칸(수강생 × 주차)에
+     코멘트 하나를 두고, 다시 저장하면 그 자리에서 수정됩니다. */
+  const COACH_PROGRAM = 'coaching';
+  const COACH_COMMENT_MAX = 2000;
+
+  /* 시안용 예시 — 정민아의 가장 최근 코칭 노트에 붙는 긴 피드백 */
+  function demoCoachComment(now) {
+    return {
+      coachComment: '민아님, 이번 주 노트 잘 읽었어요.\n\n'
+        + '벽 아래 홀드 20초가 아직 힘들다고 했는데, 지금 단계에서는 아주 자연스러운 거예요. '
+        + '손목 들기를 먼저 하고 나면 조금 편하다고 한 것도 정확한 관찰이에요. 손목 굽힘을 먼저 확보해 두면 '
+        + '체중이 손바닥 전체로 고르게 분산되거든요.\n\n'
+        + '다음 주에는 ① 손목 들기 20회 → ② 벽 아래 홀드 15초 × 4세트 → ③ 벽에서 발 떼고 3초 버티기 순서로 해 보세요. '
+        + '세트 사이에는 40초를 꼭 쉬고요. 20초를 억지로 채우기보다 15초를 깔끔하게 네 번 하는 쪽이 지금은 훨씬 좋습니다.\n\n'
+        + '어깨가 자꾸 앞으로 말리면 발을 조금 더 높이 올려 보세요. 급하게 올라가지 않아도 돼요. '
+        + '다음 주에 영상을 한 번 더 올려 주면 같이 보면서 다음 단계를 정할게요.',
+      coachCommentAt: new Date(addDays(now, -1).getTime()).toISOString(),
+    };
+  }
+
+  /* 저장된 노트에 코멘트가 붙어 있는지 — 화면이 쓰는 모양으로 맞춥니다 */
+  function coachNoteRow(state, student, weekKeyValue) {
+    const program = ONLINE[COACH_PROGRAM];
+    const rec = (((state.online || {})[student.id] || {})[COACH_PROGRAM] || {})[weekKeyValue];
+    if (!rec) return null;
+    const note = String(rec.note || '');
+    if (!note.trim()) return null;
+    let checked = 0;
+    let count = 0;
+    program.movements.forEach((m) => {
+      const hits = ((rec.checks || {})[m.id] || []).filter((v) => v === 1).length;
+      count += hits;
+      if (hits > 0) checked += 1;
+    });
+    return {
+      studentId: student.id,
+      studentName: student.name,
+      studentCode: student.code,
+      programId: COACH_PROGRAM,
+      weekKey: weekKeyValue,
+      note,
+      noteAt: rec.updatedAt || null,
+      checked,
+      total: program.movements.length,
+      count,
+      comment: String(rec.coachComment || ''),
+      commentAt: rec.coachCommentAt || null,
+    };
+  }
+
+  /* 강사 모드용 — 코칭 노트 전체를 최근 주차 → 이름 순으로 */
+  function coachNoteRows(state) {
+    const rows = [];
+    (state.students || []).forEach((student) => {
+      if (accessFor(student).online.indexOf(COACH_PROGRAM) === -1) return;
+      const bucket = ((state.online || {})[student.id] || {})[COACH_PROGRAM] || {};
+      Object.keys(bucket).forEach((weekKeyValue) => {
+        const row = coachNoteRow(state, student, weekKeyValue);
+        if (row) rows.push(row);
+      });
+    });
+    return rows.sort((a, b) => {
+      if (a.weekKey !== b.weekKey) return a.weekKey < b.weekKey ? 1 : -1;
+      return String(a.studentName).localeCompare(String(b.studentName), 'ko');
+    });
+  }
+
+  /* 이미 저장된 시안 데이터에도 예시 코멘트를 한 번 넣어 둡니다.
+     강사가 코멘트를 지우면 다시 채우지 않도록 표시(state.coachNotesSeeded)를 남깁니다. */
+  function seedDemoCoachComments(state) {
+    if (state.coachNotesSeeded) return false;
+    state.coachNotesSeeded = true;
+    const student = (state.students || []).find((x) => x.id === 'st_coaching');
+    if (!student) return true;
+    const bucket = ((state.online || {})[student.id] || {})[COACH_PROGRAM] || {};
+    const weeks = Object.keys(bucket)
+      .filter((k) => String(bucket[k].note || '').trim())
+      .sort();
+    if (!weeks.length) return true;
+    const latest = weeks[weeks.length - 1];
+    const rec = bucket[latest];
+    if (!rec.coachComment) Object.assign(rec, demoCoachComment(new Date()));
+    return true;
   }
 
   /* 강사 화면용: 이번 주 온라인 체크·노트 요약 */
@@ -1009,6 +1097,8 @@ const api = (() => {
       state.videos = demoVideos(new Date());
       save();
     }
+    /* 코칭 노트 강사 코멘트 이전 데이터에도 예시 코멘트 1건을 한 번 넣어 둡니다. */
+    if (seedDemoCoachComments(state)) save();
     normalizePaySettings(state);
     migrateClasses();
     migratePasses();
@@ -1811,6 +1901,51 @@ const api = (() => {
       return JSON.parse(JSON.stringify(rec));
     },
 
+    /* ── 강사: 주간 코칭 노트 코멘트 (핸드스탠드 온라인 코칭 전용) ──
+       저장하면 작성 시각이 새로 기록되고, 다시 저장하면 수정됩니다.
+       노트가 있는 주차에만 달 수 있습니다. */
+    async setCoachComment(studentId, programId, weekKeyValue, text) {
+      if (programId !== COACH_PROGRAM) {
+        throw new Error('강사 코멘트는 핸드스탠드 온라인 코칭 노트에만 달 수 있어요.');
+      }
+      if (!weekKeyValue) throw new Error('주차를 다시 선택해 주세요.');
+      const s = load();
+      const student = s.students.find((x) => x.id === studentId);
+      if (!student) throw new Error('수강생 정보를 찾을 수 없어요.');
+      if (accessFor(student).online.indexOf(COACH_PROGRAM) === -1) {
+        throw new Error('핸드스탠드 온라인 코칭을 듣는 수강생에게만 코멘트를 달 수 있어요.');
+      }
+      const rec = (((s.online || {})[studentId] || {})[COACH_PROGRAM] || {})[weekKeyValue];
+      if (!rec || !String(rec.note || '').trim()) {
+        throw new Error('수강생 노트가 있는 주차에만 코멘트를 달 수 있어요.');
+      }
+      const comment = String(text == null ? '' : text).replace(/\r\n/g, '\n').trim();
+      if (!comment) throw new Error('강사 코멘트를 입력해 주세요.');
+      if (comment.length > COACH_COMMENT_MAX) {
+        throw new Error(`강사 코멘트는 ${COACH_COMMENT_MAX}자까지 쓸 수 있어요.`);
+      }
+      rec.coachComment = comment;
+      rec.coachCommentAt = new Date().toISOString();
+      save();
+      return JSON.parse(JSON.stringify(rec));
+    },
+
+    /* 강사: 코멘트 삭제 — 수강생 노트는 그대로 두고 코멘트만 지웁니다 */
+    async deleteCoachComment(studentId, programId, weekKeyValue) {
+      if (programId !== COACH_PROGRAM) {
+        throw new Error('강사 코멘트는 핸드스탠드 온라인 코칭 노트에만 달 수 있어요.');
+      }
+      const s = load();
+      const rec = (((s.online || {})[studentId] || {})[COACH_PROGRAM] || {})[weekKeyValue];
+      if (!rec || !String(rec.coachComment || '').trim()) {
+        throw new Error('강사 코멘트를 찾을 수 없어요.');
+      }
+      delete rec.coachComment;
+      delete rec.coachCommentAt;
+      save();
+      return JSON.parse(JSON.stringify(rec));
+    },
+
     /* ── 코칭 영상: 수강생 업로드 · 조회 · 삭제 ── */
     async listVideos(studentId) {
       const s = load();
@@ -1924,6 +2059,7 @@ const api = (() => {
       });
       const nameOf = new Map(students.map((st) => [st.id, st]));
       const videos = videoRows(s);
+      const coachNotes = coachNoteRows(s);
 
       const byDay = new Map();
       sessions.forEach((session) => {
@@ -1966,6 +2102,8 @@ const api = (() => {
         }),
         online: onlineSummary(s, weekKeyOf(now)),
         onlineWeekKey: weekKeyOf(now),
+        coachNotes,
+        coachPending: coachNotes.filter((n) => !n.comment).length,
         videos,
         videoPending: videos.filter((v) => v.status !== 'done').length,
         payAccount: { ...s.settings.payAccount },
