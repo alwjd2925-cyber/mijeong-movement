@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="stylesheet" href="styles.css?v=2026-11-24c">
+<link rel="stylesheet" href="styles.css?v=2026-11-25a">
 </head>
 <body>
 
@@ -248,6 +248,35 @@
   </div>
 </dialog>
 
+<!-- ───────────── payment modal (시안) ───────────── -->
+<dialog class="modal modal--pay" id="payModal" aria-label="카드 결제">
+  <div class="modal-inner">
+    <div class="modal-head">
+      <div>
+        <p class="modal-kicker">secure payment</p>
+        <h3 class="modal-title">카드 결제</h3>
+      </div>
+      <button class="modal-close" type="button" data-close-pay aria-label="닫기">✕</button>
+    </div>
+    <div class="pm-body">
+      <p class="pm-lede">시안용 결제 확인 창입니다. 실제로 금액이 빠져나가지는 않습니다.</p>
+      <div class="pm-rows">
+        <p class="pm-row"><span>주문</span><b id="payOrder">—</b></p>
+        <p class="pm-row"><span>결제 수단</span><b id="payProvider">신용·체크카드</b></p>
+        <p class="pm-row pm-amount"><span>결제 금액</span><b id="payAmount">—</b></p>
+      </div>
+      <p class="pm-slot">
+        <b>PG 연동 자리</b> — 토스페이먼츠 · 포트원 결제 키를 연결하면 이 창이 실제 결제창으로 바뀝니다.
+        지금은 <b>결제 완료하기(시안)</b>를 누르면 결제된 것으로 기록되고 수강이 바로 열립니다.
+      </p>
+    </div>
+    <div class="pm-foot">
+      <button class="btn btn-butter btn-wide" type="button" data-pay-confirm>결제 완료하기 (시안)</button>
+      <button class="text-btn" type="button" data-close-pay>취소</button>
+    </div>
+  </div>
+</dialog>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <noscript>
@@ -339,7 +368,7 @@
   </symbol>
 </svg>
 
-<script src="data.js?v=2026-11-24c"></script>
-<script src="app.js?v=2026-11-24c"></script>
+<script src="data.js?v=2026-11-25a"></script>
+<script src="app.js?v=2026-11-25a"></script>
 </body>
 </html>
